@@ -1,18 +1,15 @@
 import { z } from "zod";
 
-export const phoneSchema = z
-  .string()
-  .regex(/^\+?[1-9]\d{9,14}$/, "Invalid phone number");
-
-export const otpSchema = z
-  .string()
-  .regex(/^\d{6}$/, "OTP must be 6 digits");
-
 export const registerSchema = z.object({
   full_name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
-  phone: phoneSchema,
-  role: z.enum(["bwg", "collector", "farmer", "admin"]),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  role: z.enum(["bwg", "collector", "farmer"]),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
 });
 
 export const schedulePickupSchema = z.object({

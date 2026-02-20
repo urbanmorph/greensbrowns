@@ -7,13 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
 import { RoleSelector } from "@/components/auth/role-selector";
 import type { UserRole } from "@/types/enums";
+import Link from "next/link";
 
 export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("bwg");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,13 +27,20 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
-    const fullPhone = phone.startsWith("+") ? phone : `+91${phone}`;
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
+      setLoading(false);
+      return;
+    }
+
+    const redirectTo = `${window.location.origin}/auth/callback`;
 
     const { data, error: signUpError } = await supabase.auth.signUp({
-      phone: fullPhone,
-      password: Math.random().toString(36).slice(-12),
+      email,
+      password,
       options: {
-        data: { full_name: fullName, email, role },
+        data: { full_name: fullName, role },
+        emailRedirectTo: redirectTo,
       },
     });
 
@@ -41,14 +50,14 @@ export default function RegisterPage() {
       return;
     }
 
-    if (data.user) {
-      await supabase
-        .from("profiles")
-        .update({ full_name: fullName, email, role })
-        .eq("id", data.user.id);
+    // If identities array is empty, the email is already registered
+    if (data.user && data.user.identities?.length === 0) {
+      setError("An account with this email already exists. Please sign in.");
+      setLoading(false);
+      return;
     }
 
-    router.push(`/verify-otp?phone=${encodeURIComponent(fullPhone)}`);
+    router.push(`/verify-otp?email=${encodeURIComponent(email)}`);
   }
 
   return (
@@ -75,26 +84,23 @@ export default function RegisterPage() {
             <Input
               id="regEmail"
               type="email"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="regPhone">Phone Number</Label>
-            <div className="flex gap-2">
-              <span className="flex items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
-                +91
-              </span>
-              <Input
-                id="regPhone"
-                type="tel"
-                placeholder="9876543210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-              />
-            </div>
+            <Label htmlFor="regPassword">Password</Label>
+            <Input
+              id="regPassword"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+            />
           </div>
           <div className="space-y-2">
             <Label>I am a</Label>
@@ -102,9 +108,16 @@ export default function RegisterPage() {
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {loading ? "Creating Account..." : "Create Account"}
           </Button>
         </form>
+        <div className="mt-6 text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+            Sign in
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );

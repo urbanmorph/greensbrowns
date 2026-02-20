@@ -1,10 +1,17 @@
+"use client";
+
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PhoneOtpForm } from "@/components/auth/phone-otp-form";
+import { EmailPasswordForm } from "@/components/auth/email-password-form";
 import { EmailLoginForm } from "@/components/auth/email-login-form";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginContent() {
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
+
   return (
     <Card>
       <CardHeader>
@@ -14,15 +21,22 @@ export default function LoginPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="phone" className="w-full">
+        {error && (
+          <p className="mb-4 text-sm text-destructive">
+            {error === "auth_callback_failed"
+              ? "Authentication failed. Please try again."
+              : error}
+          </p>
+        )}
+        <Tabs defaultValue="password" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="phone">Phone OTP</TabsTrigger>
-            <TabsTrigger value="email">Email</TabsTrigger>
+            <TabsTrigger value="password">Email &amp; Password</TabsTrigger>
+            <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
           </TabsList>
-          <TabsContent value="phone" className="mt-4">
-            <PhoneOtpForm />
+          <TabsContent value="password" className="mt-4">
+            <EmailPasswordForm />
           </TabsContent>
-          <TabsContent value="email" className="mt-4">
+          <TabsContent value="magic-link" className="mt-4">
             <EmailLoginForm />
           </TabsContent>
         </Tabs>
@@ -34,5 +48,13 @@ export default function LoginPage() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="text-center text-muted-foreground">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

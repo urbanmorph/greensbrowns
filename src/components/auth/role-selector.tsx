@@ -18,8 +18,10 @@ interface RoleSelectorProps {
 
 export function RoleSelector({ value, onChange }: RoleSelectorProps) {
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {(Object.entries(ROLES) as [UserRole, typeof ROLES[UserRole]][]).map(
+    <div className="grid grid-cols-3 gap-3">
+      {(Object.entries(ROLES) as [UserRole, typeof ROLES[UserRole]][]).filter(
+        ([key]) => key !== "admin"
+      ).map(
         ([key, role]) => {
           const Icon = ROLE_ICONS[key];
           const isSelected = value === key;
