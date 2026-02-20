@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
+import { PhotoUpload } from "@/components/shared/photo-upload";
+import { PhotoDisplay } from "@/components/shared/photo-display";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
 import { ArrowLeft, Clock, CheckCircle, Truck, Package } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +39,46 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [actualWeight, setActualWeight] = useState("");
+
+  const refetchEvents = useCallback(async () => {
+    const { data: eventsData } = await supabase
+      .from("pickup_events")
+      .select("*, profiles:changed_by(full_name)")
+      .eq("pickup_id", id)
+      .order("created_at", { ascending: true });
+
+    if (eventsData) {
+      setEvents(
+        eventsData.map((e) => ({
+          ...e,
+          profile_name: (e.profiles as unknown as { full_name: string })?.full_name,
+        })) as (PickupEvent & { profile_name?: string })[]
+      );
+    }
+  }, [supabase, id]);
+
+  // Realtime: pickup updates
+  useRealtime({
+    table: "pickups",
+    filter: `id=eq.${id}`,
+    event: "UPDATE",
+    channelName: `collector-pickup-${id}`,
+    onData: (payload) => {
+      const updated = payload.new as Record<string, unknown>;
+      setPickup((prev) => (prev ? { ...prev, ...updated } : prev));
+    },
+  });
+
+  // Realtime: new pickup events
+  useRealtime({
+    table: "pickup_events",
+    filter: `pickup_id=eq.${id}`,
+    event: "INSERT",
+    channelName: `collector-pickup-events-${id}`,
+    onData: () => {
+      refetchEvents();
+    },
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -88,6 +131,16 @@ export default function JobDetailPage() {
     fetchData();
   }, [user, id, supabase]);
 
+  async function handlePhotoUploaded(type: "before" | "after", url: string) {
+    if (!pickup) return;
+    const field = type === "before" ? "photo_before_url" : "photo_after_url";
+    await supabase
+      .from("pickups")
+      .update({ [field]: url })
+      .eq("id", pickup.id);
+    setPickup({ ...pickup, [field]: url });
+  }
+
   async function handleStatusUpdate(nextStatus: PickupStatus) {
     if (!user || !pickup) return;
     setUpdating(true);
@@ -118,22 +171,6 @@ export default function JobDetailPage() {
     setPickup({ ...pickup, status: nextStatus, ...(updates.actual_weight_kg ? { actual_weight_kg: Number(actualWeight) } : {}) });
     toast.success(`Status updated to ${PICKUP_STATUS_LABELS[nextStatus]}`);
     setUpdating(false);
-
-    // Refresh events
-    const { data: eventsData } = await supabase
-      .from("pickup_events")
-      .select("*, profiles:changed_by(full_name)")
-      .eq("pickup_id", id)
-      .order("created_at", { ascending: true });
-
-    if (eventsData) {
-      setEvents(
-        eventsData.map((e) => ({
-          ...e,
-          profile_name: (e.profiles as unknown as { full_name: string })?.full_name,
-        })) as (PickupEvent & { profile_name?: string })[]
-      );
-    }
   }
 
   if (userLoading || loading) return <DashboardSkeleton />;
@@ -262,23 +299,44 @@ export default function JobDetailPage() {
         </Card>
       </div>
 
+      <PhotoDisplay
+        beforeUrl={pickup.photo_before_url}
+        afterUrl={pickup.photo_after_url}
+      />
+
       {transition && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
               {pickup.status === "assigned" && (
-                <div className="space-y-2">
-                  <Label htmlFor="actualWeight">Actual Weight (kg)</Label>
-                  <Input
-                    id="actualWeight"
-                    type="number"
-                    value={actualWeight}
-                    onChange={(e) => setActualWeight(e.target.value)}
-                    placeholder="Enter actual weight"
-                    className="w-48"
-                    min="1"
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="actualWeight">Actual Weight (kg)</Label>
+                    <Input
+                      id="actualWeight"
+                      type="number"
+                      value={actualWeight}
+                      onChange={(e) => setActualWeight(e.target.value)}
+                      placeholder="Enter actual weight"
+                      className="w-48"
+                      min="1"
+                    />
+                  </div>
+                  <PhotoUpload
+                    pickupId={pickup.id}
+                    type="before"
+                    existingUrl={pickup.photo_before_url}
+                    onUploaded={(url) => handlePhotoUploaded("before", url)}
                   />
-                </div>
+                </>
+              )}
+              {pickup.status === "in_transit" && (
+                <PhotoUpload
+                  pickupId={pickup.id}
+                  type="after"
+                  existingUrl={pickup.photo_after_url}
+                  onUploaded={(url) => handlePhotoUploaded("after", url)}
+                />
               )}
               <Button
                 onClick={() => handleStatusUpdate(transition.next)}

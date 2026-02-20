@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
+import { KycUploadForm } from "@/components/shared/kyc-upload-form";
 import { ROLES } from "@/lib/constants";
 import { User, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRole } from "@/types";
+import type { UserRole, KycStatus } from "@/types";
 
 const KYC_COLORS: Record<string, string> = {
   pending: "bg-gray-100 text-gray-800",
@@ -27,6 +28,7 @@ export default function ProfilePage() {
   const supabase = createClient();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [kycStatus, setKycStatus] = useState<KycStatus>("pending");
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -37,6 +39,7 @@ export default function ProfilePage() {
       setFullName(profile.full_name || "");
       setPhone(profile.phone || "");
       setCity(profile.city || "");
+      setKycStatus(profile.kyc_status);
     }
   }, [profile]);
 
@@ -104,9 +107,9 @@ export default function ProfilePage() {
               <p className="text-sm text-muted-foreground">KYC Status</p>
               <Badge
                 variant="secondary"
-                className={KYC_COLORS[profile.kyc_status]}
+                className={KYC_COLORS[kycStatus]}
               >
-                {profile.kyc_status}
+                {kycStatus}
               </Badge>
             </div>
             <div>
@@ -121,6 +124,13 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        <KycUploadForm
+          userId={user.id}
+          currentStatus={kycStatus}
+          kycNotes={profile.kyc_notes}
+          onStatusChange={setKycStatus}
+        />
       </div>
     );
   }

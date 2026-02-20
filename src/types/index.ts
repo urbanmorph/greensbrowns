@@ -8,6 +8,7 @@ export interface Profile {
   email: string | null;
   avatar_url: string | null;
   kyc_status: import("./enums").KycStatus;
+  kyc_notes: string | null;
   city: string;
   created_at: string;
   updated_at: string;

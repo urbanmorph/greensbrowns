@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
+import { PhotoDisplay } from "@/components/shared/photo-display";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
 import { ArrowLeft, Clock, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +29,46 @@ export default function PickupDetailPage() {
   const [farmerName, setFarmerName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+
+  const refetchEvents = useCallback(async () => {
+    const { data: eventsData } = await supabase
+      .from("pickup_events")
+      .select("*, profiles:changed_by(full_name)")
+      .eq("pickup_id", id)
+      .order("created_at", { ascending: true });
+
+    if (eventsData) {
+      setEvents(
+        eventsData.map((e) => ({
+          ...e,
+          profile_name: (e.profiles as unknown as { full_name: string })?.full_name,
+        })) as (PickupEvent & { profile_name?: string })[]
+      );
+    }
+  }, [supabase, id]);
+
+  // Realtime: pickup updates
+  useRealtime({
+    table: "pickups",
+    filter: `id=eq.${id}`,
+    event: "UPDATE",
+    channelName: `bwg-pickup-${id}`,
+    onData: (payload) => {
+      const updated = payload.new as Record<string, unknown>;
+      setPickup((prev) => (prev ? { ...prev, ...updated } : prev));
+    },
+  });
+
+  // Realtime: new pickup events
+  useRealtime({
+    table: "pickup_events",
+    filter: `pickup_id=eq.${id}`,
+    event: "INSERT",
+    channelName: `bwg-pickup-events-${id}`,
+    onData: () => {
+      refetchEvents();
+    },
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -239,6 +281,11 @@ export default function PickupDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <PhotoDisplay
+        beforeUrl={pickup.photo_before_url}
+        afterUrl={pickup.photo_after_url}
+      />
 
       {pickup.status === "scheduled" && (
         <div className="flex justify-end">

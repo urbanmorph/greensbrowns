@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,31 @@ export default function AdminPickupsPage() {
   const [selectedCollector, setSelectedCollector] = useState("");
   const [selectedFarmer, setSelectedFarmer] = useState("");
   const [assigning, setAssigning] = useState(false);
+
+  // Realtime: pickup updates (all pickups)
+  useRealtime({
+    table: "pickups",
+    event: "UPDATE",
+    channelName: "admin-pickups-all",
+    onData: (payload) => {
+      const updated = payload.new as Record<string, unknown>;
+      setPickups((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? {
+                ...p,
+                status: updated.status as string,
+                collector_id: (updated.collector_id as string) ?? p.collector_id,
+                farmer_id: (updated.farmer_id as string) ?? p.farmer_id,
+                estimated_weight_kg: (updated.estimated_weight_kg as number) ?? p.estimated_weight_kg,
+                scheduled_date: (updated.scheduled_date as string) ?? p.scheduled_date,
+                scheduled_slot: (updated.scheduled_slot as string) ?? p.scheduled_slot,
+              }
+            : p
+        )
+      );
+    },
+  });
 
   useEffect(() => {
     async function fetchData() {
