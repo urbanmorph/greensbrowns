@@ -7,9 +7,12 @@ import {
   BarChart3,
   Package,
   Leaf,
+  Sprout,
   Wrench,
   ShieldCheck,
   CreditCard,
+  PackagePlus,
+  IndianRupee,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole, PrepaidPackageStatus } from "@/types/enums";
@@ -43,7 +46,12 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
+export interface NavGroup {
+  group: string;
+  items: NavItem[];
+}
+
+export const NAV_ITEMS: Record<Exclude<UserRole, "admin">, NavItem[]> = {
   bwg: [
     { title: "Dashboard", href: "/dashboard/bwg", icon: Home },
     { title: "Pickups", href: "/dashboard/bwg/pickups", icon: Truck },
@@ -61,15 +69,30 @@ export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { title: "Deliveries", href: "/dashboard/farmer/deliveries", icon: Truck },
     { title: "Compost", href: "/dashboard/farmer/compost", icon: Leaf },
   ],
-  admin: [
-    { title: "Dashboard", href: "/dashboard/admin", icon: Home },
-    { title: "Users", href: "/dashboard/admin/users", icon: Users },
-    { title: "Pickups", href: "/dashboard/admin/pickups", icon: Truck },
-    { title: "Organizations", href: "/dashboard/admin/organizations", icon: Building2 },
-    { title: "Prepaid", href: "/dashboard/admin/prepaid", icon: CreditCard },
-    { title: "Reports", href: "/dashboard/admin/reports", icon: BarChart3 },
-  ],
 };
+
+export const ADMIN_NAV_GROUPS: NavGroup[] = [
+  {
+    group: "Operations",
+    items: [
+      { title: "Dashboard", href: "/dashboard/admin", icon: Home },
+      { title: "Users", href: "/dashboard/admin/users", icon: Users },
+      { title: "Pickups", href: "/dashboard/admin/pickups", icon: Truck },
+      { title: "Organizations", href: "/dashboard/admin/organizations", icon: Building2 },
+      { title: "Prepaid", href: "/dashboard/admin/prepaid", icon: CreditCard },
+      { title: "Collectors", href: "/dashboard/admin/collectors", icon: Truck },
+      { title: "Farmers", href: "/dashboard/admin/farmers", icon: Sprout },
+      { title: "Reports", href: "/dashboard/admin/reports", icon: BarChart3 },
+    ],
+  },
+  {
+    group: "Setup",
+    items: [
+      { title: "Prepaid Packages", href: "/dashboard/admin/setup/prepaid-packages", icon: PackagePlus },
+      { title: "Pickup Pricing", href: "/dashboard/admin/setup/pricing", icon: IndianRupee },
+    ],
+  },
+];
 
 export const PICKUP_STATUS_LABELS: Record<string, string> = {
   requested: "Requested",

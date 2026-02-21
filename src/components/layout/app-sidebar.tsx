@@ -15,7 +15,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { NAV_ITEMS, ROLES } from "@/lib/constants";
+import { NAV_ITEMS, ADMIN_NAV_GROUPS, ROLES } from "@/lib/constants";
+import type { NavItem } from "@/lib/constants";
 import { Lock } from "lucide-react";
 import type { UserRole } from "@/types/enums";
 
@@ -31,9 +32,56 @@ interface AppSidebarProps {
   hasOrg?: boolean;
 }
 
+function NavMenuItems({
+  items,
+  pathname,
+  role,
+  hasOrg,
+}: {
+  items: NavItem[];
+  pathname: string;
+  role: UserRole;
+  hasOrg: boolean;
+}) {
+  return (
+    <SidebarMenu>
+      {items.map((item) => {
+        const isGated =
+          role === "bwg" &&
+          !hasOrg &&
+          BWG_GATED.some((p) => item.href.startsWith(p));
+
+        return (
+          <SidebarMenuItem key={item.href}>
+            {isGated ? (
+              <SidebarMenuButton
+                disabled
+                className="opacity-50 cursor-not-allowed"
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.title}</span>
+                <Lock className="ml-auto h-3 w-3" />
+              </SidebarMenuButton>
+            ) : (
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === item.href}
+              >
+                <Link href={item.href}>
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            )}
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
+  );
+}
+
 export function AppSidebar({ role, userName, hasOrg = true }: AppSidebarProps) {
   const pathname = usePathname();
-  const navItems = NAV_ITEMS[role];
   const initials = userName
     .split(" ")
     .map((n) => n[0])
@@ -55,44 +103,33 @@ export function AppSidebar({ role, userName, hasOrg = true }: AppSidebarProps) {
         </p>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isGated =
-                  role === "bwg" &&
-                  !hasOrg &&
-                  BWG_GATED.some((p) => item.href.startsWith(p));
-
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    {isGated ? (
-                      <SidebarMenuButton
-                        disabled
-                        className="opacity-50 cursor-not-allowed"
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                        <Lock className="ml-auto h-3 w-3" />
-                      </SidebarMenuButton>
-                    ) : (
-                      <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.href}
-                      >
-                        <Link href={item.href}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    )}
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {role === "admin" ? (
+          ADMIN_NAV_GROUPS.map((navGroup) => (
+            <SidebarGroup key={navGroup.group}>
+              <SidebarGroupLabel>{navGroup.group}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <NavMenuItems
+                  items={navGroup.items}
+                  pathname={pathname}
+                  role={role}
+                  hasOrg={hasOrg}
+                />
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))
+        ) : (
+          <SidebarGroup>
+            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavMenuItems
+                items={NAV_ITEMS[role as Exclude<UserRole, "admin">]}
+                pathname={pathname}
+                role={role}
+                hasOrg={hasOrg}
+              />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <Link href="/dashboard/profile" className="flex items-center gap-3">

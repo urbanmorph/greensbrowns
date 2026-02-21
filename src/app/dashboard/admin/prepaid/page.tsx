@@ -20,6 +20,10 @@ import { PREPAID_STATUS_LABELS, PREPAID_STATUS_COLORS } from "@/lib/constants";
 import { CreditCard, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
+interface PrepaidPlan {
+  validity_days: number;
+}
+
 interface PrepaidWithDetails {
   id: string;
   organization_id: string;
@@ -32,8 +36,10 @@ interface PrepaidWithDetails {
   expires_at: string | null;
   notes: string | null;
   created_at: string;
+  plan_id: string | null;
   organizations: { name: string } | null;
   profiles: { full_name: string | null; email: string | null } | null;
+  prepaid_package_plans: PrepaidPlan | null;
 }
 
 export default function AdminPrepaidPage() {
@@ -46,7 +52,7 @@ export default function AdminPrepaidPage() {
       const { data } = await supabase
         .from("prepaid_packages")
         .select(
-          "*, organizations(name), profiles!prepaid_packages_requested_by_fkey(full_name, email)"
+          "*, organizations(name), profiles!prepaid_packages_requested_by_fkey(full_name, email), prepaid_package_plans(validity_days)"
         )
         .order("created_at", { ascending: false });
 
@@ -67,8 +73,11 @@ export default function AdminPrepaidPage() {
     }
 
     const now = new Date().toISOString();
+
+    // Use validity_days from the associated plan, or default to 365 days
+    const validityDays = pkg.prepaid_package_plans?.validity_days ?? 365;
     const expiresAt = new Date(
-      Date.now() + 365 * 24 * 60 * 60 * 1000
+      Date.now() + validityDays * 24 * 60 * 60 * 1000
     ).toISOString();
 
     const { error } = await supabase
@@ -99,7 +108,9 @@ export default function AdminPrepaidPage() {
           : p
       )
     );
-    toast.success("Package approved");
+    toast.success(
+      `Package approved — valid for ${validityDays} days`
+    );
   }
 
   async function handleReject(pkg: PrepaidWithDetails) {
@@ -149,7 +160,8 @@ export default function AdminPrepaidPage() {
                   <TableHead>Pickups</TableHead>
                   <TableHead>Used</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead>Valid Until</TableHead>
                   <TableHead>Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -157,10 +169,10 @@ export default function AdminPrepaidPage() {
                 {packages.map((pkg) => (
                   <TableRow key={pkg.id}>
                     <TableCell className="font-medium">
-                      {pkg.organizations?.name || "—"}
+                      {pkg.organizations?.name || "\u2014"}
                     </TableCell>
                     <TableCell>
-                      {pkg.profiles?.full_name || pkg.profiles?.email || "—"}
+                      {pkg.profiles?.full_name || pkg.profiles?.email || "\u2014"}
                     </TableCell>
                     <TableCell>{pkg.pickup_count}</TableCell>
                     <TableCell>{pkg.used_count}</TableCell>
@@ -174,6 +186,21 @@ export default function AdminPrepaidPage() {
                     </TableCell>
                     <TableCell>
                       {new Date(pkg.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {pkg.expires_at ? (
+                        <span
+                          className={
+                            new Date(pkg.expires_at) < new Date()
+                              ? "text-red-600 font-medium"
+                              : ""
+                          }
+                        >
+                          {new Date(pkg.expires_at).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">{"\u2014"}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {pkg.status === "pending" ? (
@@ -195,7 +222,7 @@ export default function AdminPrepaidPage() {
                           </Button>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">{"\u2014"}</span>
                       )}
                     </TableCell>
                   </TableRow>

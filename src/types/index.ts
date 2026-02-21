@@ -52,9 +52,22 @@ export interface Pickup {
   updated_at: string;
 }
 
+export interface PrepaidPackagePlan {
+  id: string;
+  name: string;
+  pickup_count: number;
+  validity_days: number;
+  price_paise: number;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PrepaidPackage {
   id: string;
   organization_id: string;
+  plan_id: string | null;
   pickup_count: number;
   used_count: number;
   status: import("./enums").PrepaidPackageStatus;

@@ -363,10 +363,55 @@ export type Database = {
           },
         ]
       }
+      prepaid_package_plans: {
+        Row: {
+          id: string
+          name: string
+          pickup_count: number
+          validity_days: number
+          price_paise: number
+          is_active: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          pickup_count: number
+          validity_days: number
+          price_paise: number
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          pickup_count?: number
+          validity_days?: number
+          price_paise?: number
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prepaid_package_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prepaid_packages: {
         Row: {
           id: string
           organization_id: string
+          plan_id: string | null
           pickup_count: number
           used_count: number
           status: Database["public"]["Enums"]["prepaid_package_status"]
@@ -381,6 +426,7 @@ export type Database = {
         Insert: {
           id?: string
           organization_id: string
+          plan_id?: string | null
           pickup_count: number
           used_count?: number
           status?: Database["public"]["Enums"]["prepaid_package_status"]
@@ -395,6 +441,7 @@ export type Database = {
         Update: {
           id?: string
           organization_id?: string
+          plan_id?: string | null
           pickup_count?: number
           used_count?: number
           status?: Database["public"]["Enums"]["prepaid_package_status"]
@@ -426,6 +473,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prepaid_packages_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "prepaid_package_plans"
             referencedColumns: ["id"]
           },
         ]
