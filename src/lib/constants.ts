@@ -15,7 +15,7 @@ import {
   IndianRupee,
   type LucideIcon,
 } from "lucide-react";
-import type { UserRole, PrepaidPackageStatus } from "@/types/enums";
+import type { UserRole, VehicleType, VehicleDocType } from "@/types/enums";
 
 export const APP_NAME = "GreensBrowns";
 export const APP_DESCRIPTION =
@@ -62,7 +62,6 @@ export const NAV_ITEMS: Record<Exclude<UserRole, "admin">, NavItem[]> = {
   collector: [
     { title: "Dashboard", href: "/dashboard/collector", icon: Home },
     { title: "Jobs", href: "/dashboard/collector/jobs", icon: Package },
-    { title: "Vehicles", href: "/dashboard/collector/vehicles", icon: Truck },
   ],
   farmer: [
     { title: "Dashboard", href: "/dashboard/farmer", icon: Home },
@@ -90,6 +89,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "Prepaid Packages", href: "/dashboard/admin/setup/prepaid-packages", icon: PackagePlus },
       { title: "Pickup Pricing", href: "/dashboard/admin/setup/pricing", icon: IndianRupee },
+      { title: "Collector Vehicles", href: "/dashboard/admin/setup/collector-vehicles", icon: Truck },
     ],
   },
 ];
@@ -126,4 +126,36 @@ export const PREPAID_STATUS_COLORS: Record<string, string> = {
   approved: "bg-green-100 text-green-800",
   rejected: "bg-red-100 text-red-800",
   expired: "bg-gray-100 text-gray-800",
+};
+
+export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+  trolley: "Trolley / Handcart",
+  auto: "Auto (3-Wheeler)",
+  mini_truck: "Mini Truck",
+  pickup: "Pickup",
+  tempo: "Tempo / LCV",
+  tipper: "Tipper",
+  light_truck: "Light Truck",
+  medium_truck: "Medium Truck",
+  truck: "Heavy Truck",
+};
+
+export const VEHICLE_TYPE_DETAILS: Record<VehicleType, { examples: string; capacity: number }> = {
+  trolley: { examples: "BBMP handcart, fabricated steel push trolley", capacity: 300 },
+  auto: { examples: "Piaggio Ape, Mahindra Treo Zor", capacity: 400 },
+  mini_truck: { examples: "Tata Ace Gold, Mahindra Supro, Ashok Leyland Dost", capacity: 1000 },
+  pickup: { examples: "Mahindra Bolero Pikup, Tata Yodha", capacity: 1500 },
+  tempo: { examples: "Force Traveller, Tata Intra", capacity: 1500 },
+  tipper: { examples: "Tata Ace Tipper, Mahindra Supro Tipper, Tata 407 Tipper", capacity: 2000 },
+  light_truck: { examples: "Tata 407, Eicher Pro 2049", capacity: 3000 },
+  medium_truck: { examples: "Tata 709, Ashok Leyland Ecomet", capacity: 6000 },
+  truck: { examples: "Tata 1109, Ashok Leyland 1618", capacity: 10000 },
+};
+
+export const VEHICLE_DOC_LABELS: Record<VehicleDocType, string> = {
+  rc: "Registration Certificate",
+  insurance: "Insurance",
+  tax_receipt: "Tax Paid Receipt",
+  emission_cert: "Emission Certificate",
+  fitness_cert: "Fitness Certificate",
 };

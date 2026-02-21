@@ -1,4 +1,4 @@
-export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus } from "./enums";
+export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus, VehicleDocType } from "./enums";
 
 export interface Profile {
   id: string;
@@ -92,13 +92,41 @@ export interface PickupEvent {
 
 export interface Vehicle {
   id: string;
-  owner_id: string;
+  created_by: string | null;
   registration_number: string;
   vehicle_type: import("./enums").VehicleType;
   capacity_kg: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Driver {
+  id: string;
+  name: string;
+  license_number: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleDriver {
+  id: string;
+  vehicle_id: string;
+  driver_id: string;
+  assigned_at: string;
+  assigned_by: string | null;
+}
+
+export interface VehicleDocument {
+  id: string;
+  vehicle_id: string;
+  doc_type: import("./enums").VehicleDocType;
+  file_path: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  expires_at: string | null;
 }
 
 export interface AssignedPackage {

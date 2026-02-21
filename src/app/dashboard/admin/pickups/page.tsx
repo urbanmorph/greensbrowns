@@ -32,8 +32,9 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
+import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS, VEHICLE_TYPE_LABELS } from "@/lib/constants";
 import { Truck, UserPlus } from "lucide-react";
+import type { VehicleType } from "@/types";
 import { toast } from "sonner";
 
 interface PickupWithOrg {
@@ -43,7 +44,7 @@ interface PickupWithOrg {
   scheduled_date: string;
   scheduled_slot: string | null;
   estimated_weight_kg: number | null;
-  collector_id: string | null;
+  vehicle_id: string | null;
   farmer_id: string | null;
   organizations: { name: string } | null;
 }
@@ -54,15 +55,21 @@ interface ProfileOption {
   email: string | null;
 }
 
+interface VehicleOption {
+  id: string;
+  registration_number: string;
+  vehicle_type: VehicleType;
+}
+
 export default function AdminPickupsPage() {
   const supabase = createClient();
   const [pickups, setPickups] = useState<PickupWithOrg[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedPickup, setSelectedPickup] = useState<PickupWithOrg | null>(null);
-  const [collectors, setCollectors] = useState<ProfileOption[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [farmers, setFarmers] = useState<ProfileOption[]>([]);
-  const [selectedCollector, setSelectedCollector] = useState("");
+  const [selectedVehicle, setSelectedVehicle] = useState("");
   const [selectedFarmer, setSelectedFarmer] = useState("");
   const [assigning, setAssigning] = useState(false);
 
@@ -79,7 +86,7 @@ export default function AdminPickupsPage() {
             ? {
                 ...p,
                 status: updated.status as string,
-                collector_id: (updated.collector_id as string) ?? p.collector_id,
+                vehicle_id: (updated.vehicle_id as string) ?? p.vehicle_id,
                 farmer_id: (updated.farmer_id as string) ?? p.farmer_id,
                 estimated_weight_kg: (updated.estimated_weight_kg as number) ?? p.estimated_weight_kg,
                 scheduled_date: (updated.scheduled_date as string) ?? p.scheduled_date,
@@ -95,17 +102,18 @@ export default function AdminPickupsPage() {
     async function fetchData() {
       const { data } = await supabase
         .from("pickups")
-        .select("id, pickup_number, status, scheduled_date, scheduled_slot, estimated_weight_kg, collector_id, farmer_id, organizations(name)")
+        .select("id, pickup_number, status, scheduled_date, scheduled_slot, estimated_weight_kg, vehicle_id, farmer_id, organizations(name)")
         .order("scheduled_date", { ascending: false });
 
       if (data) setPickups(data as unknown as PickupWithOrg[]);
 
-      // Fetch collectors and farmers for assignment
-      const { data: collectorData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .eq("role", "collector");
-      if (collectorData) setCollectors(collectorData);
+      // Fetch vehicles and farmers for assignment
+      const { data: vehicleData } = await supabase
+        .from("vehicles")
+        .select("id, registration_number, vehicle_type")
+        .eq("is_active", true)
+        .order("registration_number");
+      if (vehicleData) setVehicles(vehicleData as VehicleOption[]);
 
       const { data: farmerData } = await supabase
         .from("profiles")
@@ -120,14 +128,14 @@ export default function AdminPickupsPage() {
 
   function openAssignDialog(pickup: PickupWithOrg) {
     setSelectedPickup(pickup);
-    setSelectedCollector(pickup.collector_id || "");
+    setSelectedVehicle(pickup.vehicle_id || "");
     setSelectedFarmer(pickup.farmer_id || "");
     setAssignDialogOpen(true);
   }
 
   async function handleAssign() {
-    if (!selectedPickup || !selectedCollector || !selectedFarmer) {
-      toast.error("Please select both a collector and farmer");
+    if (!selectedPickup || !selectedVehicle || !selectedFarmer) {
+      toast.error("Please select both a vehicle and farmer");
       return;
     }
     setAssigning(true);
@@ -135,7 +143,7 @@ export default function AdminPickupsPage() {
     const { error } = await supabase
       .from("pickups")
       .update({
-        collector_id: selectedCollector,
+        vehicle_id: selectedVehicle,
         farmer_id: selectedFarmer,
         status: "assigned",
       })
@@ -155,7 +163,7 @@ export default function AdminPickupsPage() {
         pickup_id: selectedPickup.id,
         status: "assigned",
         changed_by: user.id,
-        notes: "Collector and farmer assigned by admin",
+        notes: "Vehicle and farmer assigned by admin",
       });
     }
 
@@ -163,7 +171,7 @@ export default function AdminPickupsPage() {
     setPickups((prev) =>
       prev.map((p) =>
         p.id === selectedPickup.id
-          ? { ...p, status: "assigned", collector_id: selectedCollector, farmer_id: selectedFarmer }
+          ? { ...p, status: "assigned", vehicle_id: selectedVehicle, farmer_id: selectedFarmer }
           : p
       )
     );
@@ -239,7 +247,7 @@ export default function AdminPickupsPage() {
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">
-                          {pickup.collector_id ? "Assigned" : "—"}
+                          {pickup.vehicle_id ? "Assigned" : "—"}
                         </span>
                       )}
                     </TableCell>
@@ -260,15 +268,15 @@ export default function AdminPickupsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Collector</Label>
-              <Select value={selectedCollector} onValueChange={setSelectedCollector}>
+              <Label>Vehicle</Label>
+              <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a collector" />
+                  <SelectValue placeholder="Select a vehicle" />
                 </SelectTrigger>
                 <SelectContent>
-                  {collectors.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.full_name || c.email || c.id}
+                  {vehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.registration_number} — {VEHICLE_TYPE_LABELS[v.vehicle_type]}
                     </SelectItem>
                   ))}
                 </SelectContent>
