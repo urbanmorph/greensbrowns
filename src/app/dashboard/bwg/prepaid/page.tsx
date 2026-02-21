@@ -116,6 +116,18 @@ export default function BwgPrepaidPage() {
     (pkg) => pkg.status === "pending"
   ).length;
 
+  const hasActivePackage = packages.some(
+    (pkg) =>
+      pkg.status === "approved" &&
+      pkg.expires_at &&
+      new Date(pkg.expires_at) > new Date() &&
+      pkg.pickup_count > pkg.used_count
+  );
+
+  const hasPendingRequest = pendingRequests > 0;
+
+  const canRequestNew = !hasActivePackage && !hasPendingRequest;
+
   if (userLoading || loading) return <DashboardSkeleton />;
 
   return (
@@ -143,31 +155,39 @@ export default function BwgPrepaidPage() {
           <CardTitle>Request Prepaid Package</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pickupCount">Number of Pickups</Label>
-              <Input
-                id="pickupCount"
-                type="number"
-                min={1}
-                value={pickupCount}
-                onChange={(e) => setPickupCount(Number(e.target.value))}
-                required
-              />
+          {!canRequestNew ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {hasActivePackage
+                ? "You have an active prepaid package with remaining credits. You can request a new package once your credits are used up or the validity period ends."
+                : "You have a pending prepaid request awaiting admin approval. Please wait for it to be processed before submitting another."}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes (optional)</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Reference number, payment details..."
-              />
-            </div>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Submitting..." : "Submit Request"}
-            </Button>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pickupCount">Number of Pickups</Label>
+                <Input
+                  id="pickupCount"
+                  type="number"
+                  min={1}
+                  value={pickupCount}
+                  onChange={(e) => setPickupCount(Number(e.target.value))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (optional)</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Reference number, payment details..."
+                />
+              </div>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Submitting..." : "Submit Request"}
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
 
