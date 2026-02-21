@@ -1,14 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/shared/stat-card";
+import { AlertCard } from "@/components/shared/alert-card";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
-import { Users, Truck, Building2, BarChart3 } from "lucide-react";
+import { useRealtime } from "@/hooks/use-realtime";
+import {
+  PICKUP_STATUS_LABELS,
+  PICKUP_STATUS_COLORS,
+} from "@/lib/constants";
+import {
+  Users,
+  Truck,
+  Building2,
+  BarChart3,
+  AlertTriangle,
+  ShieldCheck,
+  CreditCard,
+  PackageCheck,
+  Factory,
+  CheckCircle2,
+  ArrowRight,
+} from "lucide-react";
 import type { PickupStatus } from "@/types";
+
+const PIPELINE_STATUSES: PickupStatus[] = [
+  "requested",
+  "assigned",
+  "picked_up",
+  "in_transit",
+  "delivered",
+  "processed",
+];
 
 interface RecentPickup {
   id: string;
@@ -18,120 +45,370 @@ interface RecentPickup {
   organizations: { name: string } | null;
 }
 
+interface Alerts {
+  unassignedPickups: number;
+  kycPending: number;
+  prepaidPending: number;
+  awaitingDelivery: number;
+  awaitingProcessing: number;
+}
+
+interface Stats {
+  totalUsers: number;
+  activePickups: number;
+  organizations: number;
+  monthlyPickups: number;
+}
+
 export default function AdminDashboard() {
   const supabase = createClient();
-  const [stats, setStats] = useState({
+  const [alerts, setAlerts] = useState<Alerts>({
+    unassignedPickups: 0,
+    kycPending: 0,
+    prepaidPending: 0,
+    awaitingDelivery: 0,
+    awaitingProcessing: 0,
+  });
+  const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
     activePickups: 0,
     organizations: 0,
     monthlyPickups: 0,
   });
+  const [pipeline, setPipeline] = useState<Record<string, number>>({});
   const [recentPickups, setRecentPickups] = useState<RecentPickup[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      // Users count
-      const { count: userCount } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true });
+  const fetchData = useCallback(async () => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
 
-      // Active pickups
-      const { count: activeCount } = await supabase
-        .from("pickups")
-        .select("*", { count: "exact", head: true })
-        .not("status", "in", '("processed","cancelled")');
-
-      // Orgs count
-      const { count: orgCount } = await supabase
-        .from("organizations")
-        .select("*", { count: "exact", head: true });
-
-      // Monthly pickups (this month)
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      const { count: monthlyCount } = await supabase
-        .from("pickups")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", startOfMonth.toISOString());
-
-      setStats({
-        totalUsers: userCount || 0,
-        activePickups: activeCount || 0,
-        organizations: orgCount || 0,
-        monthlyPickups: monthlyCount || 0,
-      });
-
+    const [
+      // Alert counts
+      { count: unassignedCount },
+      { count: kycCount },
+      { count: prepaidCount },
+      { count: awaitingDeliveryCount },
+      { count: awaitingProcessingCount },
+      // Overview stats
+      { count: userCount },
+      { count: activeCount },
+      { count: orgCount },
+      { count: monthlyCount },
+      // Pipeline counts
+      { count: requestedCount },
+      { count: assignedCount },
+      { count: pickedUpCount },
+      { count: inTransitCount },
+      { count: deliveredCount },
+      { count: processedCount },
       // Recent pickups
-      const { data: pickups } = await supabase
+      { data: pickups },
+    ] = await Promise.all([
+      // Alerts
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "requested"),
+      supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("kyc_status", "submitted"),
+      supabase
+        .from("prepaid_packages")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "picked_up"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "delivered"),
+      // Stats
+      supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true }),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .not("status", "in", '("processed","cancelled")'),
+      supabase
+        .from("organizations")
+        .select("*", { count: "exact", head: true }),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", startOfMonth.toISOString()),
+      // Pipeline
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "requested"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "assigned"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "picked_up"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "in_transit"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "delivered"),
+      supabase
+        .from("pickups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "processed"),
+      // Recent pickups
+      supabase
         .from("pickups")
         .select("id, pickup_number, status, scheduled_date, organizations(name)")
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(5),
+    ]);
 
-      if (pickups) setRecentPickups(pickups as unknown as RecentPickup[]);
-      setLoading(false);
-    }
-    fetchData();
+    setAlerts({
+      unassignedPickups: unassignedCount || 0,
+      kycPending: kycCount || 0,
+      prepaidPending: prepaidCount || 0,
+      awaitingDelivery: awaitingDeliveryCount || 0,
+      awaitingProcessing: awaitingProcessingCount || 0,
+    });
+
+    setStats({
+      totalUsers: userCount || 0,
+      activePickups: activeCount || 0,
+      organizations: orgCount || 0,
+      monthlyPickups: monthlyCount || 0,
+    });
+
+    setPipeline({
+      requested: requestedCount || 0,
+      assigned: assignedCount || 0,
+      picked_up: pickedUpCount || 0,
+      in_transit: inTransitCount || 0,
+      delivered: deliveredCount || 0,
+      processed: processedCount || 0,
+    });
+
+    if (pickups) setRecentPickups(pickups as unknown as RecentPickup[]);
+    setLoading(false);
   }, [supabase]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Realtime subscriptions
+  useRealtime({
+    table: "pickups",
+    channelName: "admin-dash-pickups",
+    onData: () => fetchData(),
+  });
+  useRealtime({
+    table: "profiles",
+    channelName: "admin-dash-profiles",
+    onData: () => fetchData(),
+  });
+  useRealtime({
+    table: "prepaid_packages",
+    channelName: "admin-dash-prepaid",
+    onData: () => fetchData(),
+  });
+
   if (loading) return <DashboardSkeleton />;
+
+  const hasAlerts =
+    alerts.unassignedPickups > 0 ||
+    alerts.kycPending > 0 ||
+    alerts.prepaidPending > 0 ||
+    alerts.awaitingDelivery > 0 ||
+    alerts.awaitingProcessing > 0;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Users" value={stats.totalUsers} icon={Users} />
-        <StatCard
-          title="Active Pickups"
-          value={stats.activePickups}
-          icon={Truck}
-        />
-        <StatCard
-          title="Organizations"
-          value={stats.organizations}
-          icon={Building2}
-        />
-        <StatCard
-          title="Monthly Pickups"
-          value={stats.monthlyPickups}
-          icon={BarChart3}
-        />
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Pickups</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentPickups.length === 0 ? (
-            <p className="text-muted-foreground">No pickups yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {recentPickups.map((pickup) => (
-                <div
-                  key={pickup.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div>
-                    <p className="font-medium">{pickup.pickup_number}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {pickup.organizations?.name || "Unknown org"} &middot;{" "}
-                      {new Date(pickup.scheduled_date).toLocaleDateString()}
-                    </p>
+
+      {/* Action Required */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          Action Required
+        </h2>
+        {hasAlerts ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {alerts.unassignedPickups > 0 && (
+              <AlertCard
+                title="Unassigned Pickups"
+                count={alerts.unassignedPickups}
+                icon={AlertTriangle}
+                href="/dashboard/admin/pickups"
+                severity="critical"
+              />
+            )}
+            {alerts.kycPending > 0 && (
+              <AlertCard
+                title="KYC Reviews Pending"
+                count={alerts.kycPending}
+                icon={ShieldCheck}
+                href="/dashboard/admin/users"
+                severity="warning"
+              />
+            )}
+            {alerts.prepaidPending > 0 && (
+              <AlertCard
+                title="Prepaid Approvals"
+                count={alerts.prepaidPending}
+                icon={CreditCard}
+                href="/dashboard/admin/prepaid"
+                severity="warning"
+              />
+            )}
+            {alerts.awaitingDelivery > 0 && (
+              <AlertCard
+                title="Awaiting Delivery"
+                count={alerts.awaitingDelivery}
+                icon={PackageCheck}
+                href="/dashboard/admin/pickups"
+                severity="info"
+              />
+            )}
+            {alerts.awaitingProcessing > 0 && (
+              <AlertCard
+                title="Awaiting Processing"
+                count={alerts.awaitingProcessing}
+                icon={Factory}
+                href="/dashboard/admin/pickups"
+                severity="info"
+              />
+            )}
+          </div>
+        ) : (
+          <Card className="border-green-200 bg-green-50">
+            <CardContent className="flex items-center gap-3 py-3 px-4">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <p className="text-sm font-medium text-green-800">
+                All caught up — no pending actions.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {/* Overview Stats */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          Overview
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Total Users"
+            value={stats.totalUsers}
+            icon={Users}
+            href="/dashboard/admin/users"
+          />
+          <StatCard
+            title="Active Pickups"
+            value={stats.activePickups}
+            icon={Truck}
+            href="/dashboard/admin/pickups"
+          />
+          <StatCard
+            title="Organizations"
+            value={stats.organizations}
+            icon={Building2}
+            href="/dashboard/admin/organizations"
+          />
+          <StatCard
+            title="Monthly Pickups"
+            value={stats.monthlyPickups}
+            icon={BarChart3}
+            href="/dashboard/admin/reports"
+          />
+        </div>
+      </section>
+
+      {/* Pickup Pipeline */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          Pickup Pipeline
+        </h2>
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {PIPELINE_STATUSES.map((status, i) => (
+                <div key={status} className="flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                    <Badge
+                      variant="secondary"
+                      className={`${PICKUP_STATUS_COLORS[status]} text-base px-3 py-1`}
+                    >
+                      {pipeline[status] ?? 0}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {PICKUP_STATUS_LABELS[status]}
+                    </span>
                   </div>
-                  <Badge
-                    variant="secondary"
-                    className={PICKUP_STATUS_COLORS[pickup.status]}
-                  >
-                    {PICKUP_STATUS_LABELS[pickup.status]}
-                  </Badge>
+                  {i < PIPELINE_STATUSES.length - 1 && (
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Recent Pickups */}
+      <section className="space-y-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Recent Pickups</CardTitle>
+            <Link
+              href="/dashboard/admin/pickups"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+            >
+              View All <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentPickups.length === 0 ? (
+              <p className="text-muted-foreground">No pickups yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {recentPickups.map((pickup) => (
+                  <Link
+                    key={pickup.id}
+                    href={`/dashboard/admin/pickups/${pickup.id}`}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div>
+                      <p className="font-medium">{pickup.pickup_number}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {pickup.organizations?.name || "Unknown org"} &middot;{" "}
+                        {new Date(pickup.scheduled_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className={PICKUP_STATUS_COLORS[pickup.status]}
+                    >
+                      {PICKUP_STATUS_LABELS[pickup.status]}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
