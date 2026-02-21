@@ -173,6 +173,10 @@ export default function SchedulePickupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !orgId) return;
+    if (scheduledDate < minDate) {
+      toast.error("Pickup date must be from tomorrow onwards");
+      return;
+    }
     if (photos.length === 0) {
       toast.error("Please add at least one photo of the waste");
       return;
@@ -276,7 +280,15 @@ export default function SchedulePickupPage() {
                   id="date"
                   type="date"
                   value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val && val < minDate) {
+                      toast.error("Pickup date must be from tomorrow onwards");
+                      setScheduledDate(minDate);
+                    } else {
+                      setScheduledDate(val);
+                    }
+                  }}
                   min={minDate}
                   required
                 />
