@@ -218,7 +218,7 @@ export default function PickupDetailPage() {
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loading Helper</span>
-              <span>{(pickup as Record<string, unknown>).loading_helper_required ? "Required" : "Not needed"}</span>
+              <span>{(pickup as unknown as Record<string, unknown>).loading_helper_required ? "Required" : "Not needed"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Collector</span>
@@ -285,15 +285,15 @@ export default function PickupDetailPage() {
         afterUrl={pickup.photo_after_url}
       />
 
-      {Array.isArray((pickup as Record<string, unknown>).waste_photo_urls) &&
-        ((pickup as Record<string, unknown>).waste_photo_urls as string[]).length > 0 && (
+      {Array.isArray((pickup as unknown as Record<string, unknown>).waste_photo_urls) &&
+        ((pickup as unknown as Record<string, unknown>).waste_photo_urls as string[]).length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Waste Photos</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex gap-3 flex-wrap">
-                {((pickup as Record<string, unknown>).waste_photo_urls as string[]).map((url, i) => (
+                {((pickup as unknown as Record<string, unknown>).waste_photo_urls as string[]).map((url, i) => (
                   <a
                     key={i}
                     href={url}

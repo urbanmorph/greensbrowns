@@ -58,7 +58,7 @@ export default function BwgDashboard() {
           (sum, p) => sum + (Number(p.actual_weight_kg) || Number(p.estimated_weight_kg) || 0),
           0
         );
-        setStats({ active, scheduled, totalWeight, complianceDocs: 0 });
+        setStats({ active, scheduled, totalWeight, complianceDocs: 0, prepaidCredits: 0 });
         setRecentPickups((pickups as Pickup[]).slice(0, 5));
       }
 
