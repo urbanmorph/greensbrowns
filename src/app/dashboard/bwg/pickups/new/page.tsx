@@ -89,6 +89,11 @@ export default function SchedulePickupPage() {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [minDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -236,13 +241,6 @@ export default function SchedulePickupPage() {
     toast.success("Pickup scheduled!");
     router.push("/dashboard/bwg/pickups");
   }
-
-  // Tomorrow's date as minimum (computed in state to avoid hydration mismatch)
-  const [minDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split("T")[0];
-  });
 
   return (
     <div className="space-y-6">
