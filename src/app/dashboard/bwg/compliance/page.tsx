@@ -18,12 +18,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { FileText, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   manifest: "Manifest",
   receipt: "Receipt",
   certificate: "Certificate",
   report: "Report",
+  agreement: "Service Agreement",
 };
 
 const DOC_TYPE_COLORS: Record<string, string> = {
@@ -31,6 +33,7 @@ const DOC_TYPE_COLORS: Record<string, string> = {
   receipt: "bg-green-100 text-green-800",
   certificate: "bg-purple-100 text-purple-800",
   report: "bg-orange-100 text-orange-800",
+  agreement: "bg-amber-100 text-amber-800",
 };
 
 interface ComplianceDoc {
@@ -55,7 +58,7 @@ export default function CompliancePage() {
         .from("organization_members")
         .select("organization_id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
 
       if (!membership) {
         setLoading(false);
@@ -124,14 +127,21 @@ export default function CompliancePage() {
                     </TableCell>
                     <TableCell>
                       {doc.file_url ? (
-                        <Button size="sm" variant="outline" asChild>
-                          <a
-                            href={doc.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <Download className="mr-1 h-3 w-3" /> Download
-                          </a>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            const { data, error } = await supabase.storage
+                              .from("compliance-docs")
+                              .createSignedUrl(doc.file_url!, 60);
+                            if (error || !data?.signedUrl) {
+                              toast.error("Failed to generate download link");
+                              return;
+                            }
+                            window.open(data.signedUrl, "_blank");
+                          }}
+                        >
+                          <Download className="mr-1 h-3 w-3" /> Download
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">

@@ -5,7 +5,7 @@ export type KycStatus = "pending" | "submitted" | "verified" | "rejected";
 export type OrgType = "apartment" | "rwa" | "techpark";
 
 export type PickupStatus =
-  | "scheduled"
+  | "requested"
   | "assigned"
   | "picked_up"
   | "in_transit"
@@ -21,8 +21,11 @@ export type ComplianceDocType =
   | "manifest"
   | "receipt"
   | "certificate"
-  | "report";
+  | "report"
+  | "agreement";
 
 export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 export type VehicleType = "auto" | "mini_truck" | "truck" | "tempo";
+
+export type PrepaidPackageStatus = "pending" | "approved" | "rejected" | "expired";

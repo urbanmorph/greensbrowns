@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -16,12 +18,17 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { Building2, Pencil } from "lucide-react";
+import { Building2, MapPin, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import { jsPDF } from "jspdf";
+import { SERVICE_AGREEMENT_MD } from "@/lib/service-agreement";
+import { notifyAgreementSigned } from "@/lib/notifications";
 import type { Organization, OrgType } from "@/types";
 
 export default function OrganizationPage() {
   const { user, loading: userLoading } = useUser();
+  const router = useRouter();
   const supabase = createClient();
   const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +39,10 @@ export default function OrganizationPage() {
   const [orgType, setOrgType] = useState<OrgType>("apartment");
   const [address, setAddress] = useState("");
   const [pincode, setPincode] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [locating, setLocating] = useState(false);
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -40,7 +51,7 @@ export default function OrganizationPage() {
         .from("organization_members")
         .select("organization_id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
 
       if (membership) {
         const { data } = await supabase
@@ -54,6 +65,8 @@ export default function OrganizationPage() {
           setOrgType(data.org_type as OrgType);
           setAddress(data.address);
           setPincode(data.pincode || "");
+          setLat(data.lat ? String(data.lat) : "");
+          setLng(data.lng ? String(data.lng) : "");
         }
       }
       setLoading(false);
@@ -72,12 +85,12 @@ export default function OrganizationPage() {
       // Update existing org
       const { error } = await supabase
         .from("organizations")
-        .update({ name, org_type: orgType, address, pincode })
+        .update({ name, org_type: orgType, address, pincode, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null })
         .eq("id", org.id);
       if (error) {
         toast.error("Failed to update organization");
       } else {
-        setOrg({ ...org, name, org_type: orgType, address, pincode });
+        setOrg({ ...org, name, org_type: orgType, address, pincode, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null });
         setEditing(false);
         toast.success("Organization updated");
       }
@@ -85,7 +98,7 @@ export default function OrganizationPage() {
       // Create new org + membership
       const { data: newOrg, error: orgError } = await supabase
         .from("organizations")
-        .insert({ name, org_type: orgType, address, pincode })
+        .insert({ name, org_type: orgType, address, pincode, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null })
         .select()
         .single();
 
@@ -108,6 +121,89 @@ export default function OrganizationPage() {
       } else {
         setOrg(newOrg as Organization);
         toast.success("Organization created!");
+
+        // Fire-and-forget: store signed agreement as PDF + notify
+        (async () => {
+          try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const filePath = `${newOrg.id}/service-agreement-${timestamp}.pdf`;
+
+            // Generate PDF from agreement text
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 15;
+            const maxWidth = pageWidth - margin * 2;
+            // Strip markdown syntax for plain-text PDF
+            const plainText = SERVICE_AGREEMENT_MD
+              .replace(/^#{1,6}\s+/gm, "")
+              .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+              .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+              .replace(/^\|.*$/gm, "")
+              .replace(/^---+$/gm, "")
+              .replace(/&nbsp;/g, " ")
+              .replace(/\n{3,}/g, "\n\n");
+            const lines = doc.splitTextToSize(plainText, maxWidth);
+            let y = 20;
+            const lineHeight = 5;
+            doc.setFontSize(9);
+            for (const line of lines) {
+              if (y > doc.internal.pageSize.getHeight() - 15) {
+                doc.addPage();
+                y = 15;
+              }
+              doc.text(line, margin, y);
+              y += lineHeight;
+            }
+            // Add signing metadata on last page
+            y += 10;
+            if (y > doc.internal.pageSize.getHeight() - 30) {
+              doc.addPage();
+              y = 15;
+            }
+            doc.setFontSize(8);
+            doc.setTextColor(100);
+            doc.text(`Digitally accepted by: ${user.email}`, margin, y);
+            doc.text(`Organization: ${name}`, margin, y + 5);
+            doc.text(`Date: ${new Date().toLocaleString()}`, margin, y + 10);
+
+            const pdfBlob = doc.output("blob");
+
+            const { error: uploadError } = await supabase.storage
+              .from("compliance-docs")
+              .upload(filePath, pdfBlob, {
+                contentType: "application/pdf",
+              });
+
+            if (uploadError) {
+              console.error("Failed to upload agreement:", uploadError);
+              return;
+            }
+
+            const { error: docError } = await supabase
+              .from("compliance_docs")
+              .insert({
+                organization_id: newOrg.id,
+                doc_type: "agreement",
+                file_url: filePath,
+                metadata: {
+                  signed_by: user.id,
+                  signed_at: new Date().toISOString(),
+                  org_name: name,
+                },
+              });
+
+            if (docError) {
+              console.error("Failed to insert compliance doc:", docError);
+            }
+
+            notifyAgreementSigned(name, newOrg.id, user.email);
+          } catch (err) {
+            console.error("Agreement storage/notification error:", err);
+          }
+        })();
+
+        // Refresh server layout so sidebar detects the new org membership
+        router.refresh();
       }
     }
     setSaving(false);
@@ -156,6 +252,21 @@ export default function OrganizationPage() {
               <p className="text-sm text-muted-foreground">City</p>
               <p className="font-medium">{org.city}</p>
             </div>
+            {org.lat && org.lng && (
+              <div className="sm:col-span-2">
+                <p className="text-sm text-muted-foreground mb-2">Location</p>
+                <div className="rounded-md overflow-hidden border h-[200px]">
+                  <iframe
+                    title="Organization location"
+                    width="100%"
+                    height="200"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(org.lng) - 0.005}%2C${Number(org.lat) - 0.003}%2C${Number(org.lng) + 0.005}%2C${Number(org.lat) + 0.003}&layer=mapnik&marker=${org.lat}%2C${org.lng}`}
+                  />
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -221,8 +332,101 @@ export default function OrganizationPage() {
                 placeholder="560001"
               />
             </div>
+            <div className="space-y-2">
+              <Label>Map Location</Label>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="lat" className="text-xs text-muted-foreground">Latitude</Label>
+                  <Input
+                    id="lat"
+                    type="number"
+                    value={lat}
+                    onChange={(e) => setLat(e.target.value)}
+                    placeholder="12.9716"
+                    step="any"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="lng" className="text-xs text-muted-foreground">Longitude</Label>
+                  <Input
+                    id="lng"
+                    type="number"
+                    value={lng}
+                    onChange={(e) => setLng(e.target.value)}
+                    placeholder="77.5946"
+                    step="any"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={locating}
+                  onClick={() => {
+                    if (!navigator.geolocation) {
+                      toast.error("Geolocation is not supported by your browser");
+                      return;
+                    }
+                    setLocating(true);
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setLat(pos.coords.latitude.toFixed(6));
+                        setLng(pos.coords.longitude.toFixed(6));
+                        setLocating(false);
+                        toast.success("Location detected");
+                      },
+                      () => {
+                        toast.error("Unable to get your location");
+                        setLocating(false);
+                      }
+                    );
+                  }}
+                >
+                  <MapPin className="mr-1 h-4 w-4" />
+                  {locating ? "Detecting..." : "Use my location"}
+                </Button>
+              </div>
+              {lat && lng && (
+                <div className="rounded-md overflow-hidden border h-[200px] mt-2">
+                  <iframe
+                    title="Selected location"
+                    width="100%"
+                    height="200"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(lng) - 0.005}%2C${Number(lat) - 0.003}%2C${Number(lng) + 0.005}%2C${Number(lat) + 0.003}&layer=mapnik&marker=${lat}%2C${lng}`}
+                  />
+                </div>
+              )}
+            </div>
+            {!org && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Service Agreement</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="max-h-96 overflow-y-auto rounded-md border p-4">
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{SERVICE_AGREEMENT_MD}</ReactMarkdown>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="agreement"
+                      checked={agreementAccepted}
+                      onCheckedChange={(checked) =>
+                        setAgreementAccepted(checked === true)
+                      }
+                    />
+                    <Label htmlFor="agreement" className="text-sm font-normal cursor-pointer">
+                      I have read and agree to the GreensBrowns Service Agreement
+                    </Label>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <div className="flex gap-2">
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || (!org && !agreementAccepted)}>
                 {saving ? "Saving..." : org ? "Update" : "Create Organization"}
               </Button>
               {org && (
