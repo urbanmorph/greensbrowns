@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -300,8 +300,8 @@ export default function AdminOrganizationsPage() {
               </TableHeader>
               <TableBody>
                 {orgs.map((org) => (
-                  <>
-                    <TableRow key={org.id}>
+                  <Fragment key={org.id}>
+                    <TableRow>
                       <TableCell>
                         <Button
                           variant="ghost"
@@ -430,7 +430,7 @@ export default function AdminOrganizationsPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
