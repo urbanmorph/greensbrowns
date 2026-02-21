@@ -16,36 +16,43 @@ export type Database = {
     Tables: {
       assigned_packages: {
         Row: {
+          assigned_by: string | null
+          created_at: string | null
           id: string
+          is_active: boolean | null
           organization_id: string
           plan_id: string
           price_paise: number
-          assigned_by: string | null
-          is_active: boolean
-          created_at: string
-          updated_at: string
+          updated_at: string | null
         }
         Insert: {
+          assigned_by?: string | null
+          created_at?: string | null
           id?: string
+          is_active?: boolean | null
           organization_id: string
           plan_id: string
           price_paise: number
-          assigned_by?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Update: {
+          assigned_by?: string | null
+          created_at?: string | null
           id?: string
+          is_active?: boolean | null
           organization_id?: string
           plan_id?: string
           price_paise?: number
-          assigned_by?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "assigned_packages_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "assigned_packages_organization_id_fkey"
             columns: ["organization_id"]
@@ -58,13 +65,6 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "prepaid_package_plans"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "assigned_packages_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -110,6 +110,89 @@ export type Database = {
             columns: ["pickup_id"]
             isOneToOne: false
             referencedRelation: "pickups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drivers: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          license_number: string
+          name: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          license_number: string
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          license_number?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      farmer_details: {
+        Row: {
+          capacity_kg_per_month: number | null
+          compost_types: string[] | null
+          created_at: string | null
+          farm_address: string | null
+          farm_lat: number | null
+          farm_lng: number | null
+          farm_name: string | null
+          id: string
+          land_area_acres: number | null
+          notes: string | null
+          profile_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          capacity_kg_per_month?: number | null
+          compost_types?: string[] | null
+          created_at?: string | null
+          farm_address?: string | null
+          farm_lat?: number | null
+          farm_lng?: number | null
+          farm_name?: string | null
+          id?: string
+          land_area_acres?: number | null
+          notes?: string | null
+          profile_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          capacity_kg_per_month?: number | null
+          compost_types?: string[] | null
+          created_at?: string | null
+          farm_address?: string | null
+          farm_lat?: number | null
+          farm_lng?: number | null
+          farm_name?: string | null
+          id?: string
+          land_area_acres?: number | null
+          notes?: string | null
+          profile_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farmer_details_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -220,6 +303,7 @@ export type Database = {
           contact_name: string | null
           contact_phone: string | null
           created_at: string
+          created_by: string | null
           id: string
           lat: number | null
           lng: number | null
@@ -235,6 +319,7 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          created_by?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
@@ -250,6 +335,7 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          created_by?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
@@ -309,19 +395,67 @@ export type Database = {
           },
         ]
       }
+      pickup_trips: {
+        Row: {
+          created_at: string
+          delivered_at: string | null
+          id: string
+          notes: string | null
+          photo_metadata: Json
+          photo_urls: string[]
+          pickup_id: string
+          started_at: string
+          status: Database["public"]["Enums"]["trip_status"]
+          trip_number: number
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          notes?: string | null
+          photo_metadata?: Json
+          photo_urls?: string[]
+          pickup_id: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["trip_status"]
+          trip_number: number
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          notes?: string | null
+          photo_metadata?: Json
+          photo_urls?: string[]
+          pickup_id?: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["trip_status"]
+          trip_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_trips_pickup_id_fkey"
+            columns: ["pickup_id"]
+            isOneToOne: false
+            referencedRelation: "pickups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickups: {
         Row: {
           actual_weight_kg: number | null
-          collector_id: string | null
           created_at: string
           estimated_weight_kg: number | null
           farmer_id: string | null
           id: string
+          loading_helper_required: boolean
           notes: string | null
           organization_id: string
           photo_after_url: string | null
           photo_before_url: string | null
           pickup_number: string | null
+          prepaid_package_id: string | null
           recurrence: Database["public"]["Enums"]["recurrence_type"]
           requested_by: string
           scheduled_date: string
@@ -329,15 +463,15 @@ export type Database = {
           status: Database["public"]["Enums"]["pickup_status"]
           updated_at: string
           vehicle_id: string | null
-          prepaid_package_id: string | null
+          waste_photo_urls: string[] | null
         }
         Insert: {
           actual_weight_kg?: number | null
-          collector_id?: string | null
           created_at?: string
           estimated_weight_kg?: number | null
           farmer_id?: string | null
           id?: string
+          loading_helper_required?: boolean
           notes?: string | null
           organization_id: string
           photo_after_url?: string | null
@@ -351,14 +485,15 @@ export type Database = {
           status?: Database["public"]["Enums"]["pickup_status"]
           updated_at?: string
           vehicle_id?: string | null
+          waste_photo_urls?: string[] | null
         }
         Update: {
           actual_weight_kg?: number | null
-          collector_id?: string | null
           created_at?: string
           estimated_weight_kg?: number | null
           farmer_id?: string | null
           id?: string
+          loading_helper_required?: boolean
           notes?: string | null
           organization_id?: string
           photo_after_url?: string | null
@@ -372,15 +507,9 @@ export type Database = {
           status?: Database["public"]["Enums"]["pickup_status"]
           updated_at?: string
           vehicle_id?: string | null
+          waste_photo_urls?: string[] | null
         }
         Relationships: [
-          {
-            foreignKeyName: "pickups_collector_id_fkey"
-            columns: ["collector_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "pickups_farmer_id_fkey"
             columns: ["farmer_id"]
@@ -393,6 +522,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickups_prepaid_package_id_fkey"
+            columns: ["prepaid_package_id"]
+            isOneToOne: false
+            referencedRelation: "prepaid_packages"
             referencedColumns: ["id"]
           },
           {
@@ -409,45 +545,38 @@ export type Database = {
             referencedRelation: "vehicles"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "pickups_prepaid_package_id_fkey"
-            columns: ["prepaid_package_id"]
-            isOneToOne: false
-            referencedRelation: "prepaid_packages"
-            referencedColumns: ["id"]
-          },
         ]
       }
       prepaid_package_plans: {
         Row: {
+          created_at: string | null
+          created_by: string | null
           id: string
+          is_active: boolean | null
           name: string
           pickup_count: number
+          updated_at: string | null
           validity_days: number
-          is_active: boolean
-          created_by: string | null
-          created_at: string
-          updated_at: string
         }
         Insert: {
+          created_at?: string | null
+          created_by?: string | null
           id?: string
+          is_active?: boolean | null
           name: string
           pickup_count: number
+          updated_at?: string | null
           validity_days: number
-          is_active?: boolean
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
         }
         Update: {
+          created_at?: string | null
+          created_by?: string | null
           id?: string
+          is_active?: boolean | null
           name?: string
           pickup_count?: number
+          updated_at?: string | null
           validity_days?: number
-          is_active?: boolean
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
         }
         Relationships: [
           {
@@ -461,65 +590,51 @@ export type Database = {
       }
       prepaid_packages: {
         Row: {
-          id: string
-          organization_id: string
-          plan_id: string | null
-          pickup_count: number
-          used_count: number
-          status: Database["public"]["Enums"]["prepaid_package_status"]
-          requested_by: string
-          approved_by: string | null
           approved_at: string | null
-          expires_at: string | null
-          notes: string | null
+          approved_by: string | null
           created_at: string
+          expires_at: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          pickup_count: number
+          plan_id: string | null
+          requested_by: string
+          status: Database["public"]["Enums"]["prepaid_package_status"]
           updated_at: string
+          used_count: number
         }
         Insert: {
-          id?: string
-          organization_id: string
-          plan_id?: string | null
-          pickup_count: number
-          used_count?: number
-          status?: Database["public"]["Enums"]["prepaid_package_status"]
-          requested_by: string
-          approved_by?: string | null
           approved_at?: string | null
-          expires_at?: string | null
-          notes?: string | null
+          approved_by?: string | null
           created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          pickup_count: number
+          plan_id?: string | null
+          requested_by: string
+          status?: Database["public"]["Enums"]["prepaid_package_status"]
           updated_at?: string
+          used_count?: number
         }
         Update: {
-          id?: string
-          organization_id?: string
-          plan_id?: string | null
-          pickup_count?: number
-          used_count?: number
-          status?: Database["public"]["Enums"]["prepaid_package_status"]
-          requested_by?: string
-          approved_by?: string | null
           approved_at?: string | null
-          expires_at?: string | null
-          notes?: string | null
+          approved_by?: string | null
           created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          pickup_count?: number
+          plan_id?: string | null
+          requested_by?: string
+          status?: Database["public"]["Enums"]["prepaid_package_status"]
           updated_at?: string
+          used_count?: number
         }
         Relationships: [
-          {
-            foreignKeyName: "prepaid_packages_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prepaid_packages_requested_by_fkey"
-            columns: ["requested_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "prepaid_packages_approved_by_fkey"
             columns: ["approved_by"]
@@ -528,10 +643,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "prepaid_packages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "prepaid_packages_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "prepaid_package_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prepaid_packages_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -544,6 +673,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          kyc_notes: string | null
           kyc_status: Database["public"]["Enums"]["kyc_status"]
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
@@ -556,6 +686,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          kyc_notes?: string | null
           kyc_status?: Database["public"]["Enums"]["kyc_status"]
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
@@ -568,10 +699,35 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          kyc_notes?: string | null
           kyc_status?: Database["public"]["Enums"]["kyc_status"]
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      spatial_ref_sys: {
+        Row: {
+          auth_name: string | null
+          auth_srid: number | null
+          proj4text: string | null
+          srid: number
+          srtext: string | null
+        }
+        Insert: {
+          auth_name?: string | null
+          auth_srid?: number | null
+          proj4text?: string | null
+          srid: number
+          srtext?: string | null
+        }
+        Update: {
+          auth_name?: string | null
+          auth_srid?: number | null
+          proj4text?: string | null
+          srid?: number
+          srtext?: string | null
         }
         Relationships: []
       }
@@ -670,13 +826,104 @@ export type Database = {
           },
         ]
       }
+      vehicle_documents: {
+        Row: {
+          doc_type: Database["public"]["Enums"]["vehicle_doc_type"]
+          expires_at: string | null
+          file_path: string
+          id: string
+          uploaded_at: string
+          uploaded_by: string
+          vehicle_id: string
+        }
+        Insert: {
+          doc_type: Database["public"]["Enums"]["vehicle_doc_type"]
+          expires_at?: string | null
+          file_path: string
+          id?: string
+          uploaded_at?: string
+          uploaded_by: string
+          vehicle_id: string
+        }
+        Update: {
+          doc_type?: Database["public"]["Enums"]["vehicle_doc_type"]
+          expires_at?: string | null
+          file_path?: string
+          id?: string
+          uploaded_at?: string
+          uploaded_by?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_documents_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_drivers: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          driver_id: string
+          id: string
+          vehicle_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          driver_id: string
+          id?: string
+          vehicle_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          driver_id?: string
+          id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_drivers_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_drivers_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_drivers_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           capacity_kg: number
           created_at: string
+          created_by: string | null
           id: string
           is_active: boolean
-          owner_id: string
           registration_number: string
           updated_at: string
           vehicle_type: Database["public"]["Enums"]["vehicle_type"]
@@ -684,9 +931,9 @@ export type Database = {
         Insert: {
           capacity_kg?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
-          owner_id: string
           registration_number: string
           updated_at?: string
           vehicle_type: Database["public"]["Enums"]["vehicle_type"]
@@ -694,17 +941,17 @@ export type Database = {
         Update: {
           capacity_kg?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
-          owner_id?: string
           registration_number?: string
           updated_at?: string
           vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
         }
         Relationships: [
           {
-            foreignKeyName: "vehicles_owner_id_fkey"
-            columns: ["owner_id"]
+            foreignKeyName: "vehicles_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -713,16 +960,63 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      geography_columns: {
+        Row: {
+          coord_dimension: number | null
+          f_geography_column: unknown
+          f_table_catalog: unknown
+          f_table_name: unknown
+          f_table_schema: unknown
+          srid: number | null
+          type: string | null
+        }
+        Relationships: []
+      }
+      geometry_columns: {
+        Row: {
+          coord_dimension: number | null
+          f_geometry_column: unknown
+          f_table_catalog: string | null
+          f_table_name: unknown
+          f_table_schema: unknown
+          srid: number | null
+          type: string | null
+        }
+        Insert: {
+          coord_dimension?: number | null
+          f_geometry_column?: unknown
+          f_table_catalog?: string | null
+          f_table_name?: unknown
+          f_table_schema?: unknown
+          srid?: number | null
+          type?: string | null
+        }
+        Update: {
+          coord_dimension?: number | null
+          f_geometry_column?: unknown
+          f_table_catalog?: string | null
+          f_table_name?: unknown
+          f_table_schema?: unknown
+          srid?: number | null
+          type?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      get_user_org_ids: { Args: never; Returns: string[] }
       get_user_role: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
     }
     Enums: {
-      compliance_doc_type: "manifest" | "receipt" | "certificate" | "report"
+      compliance_doc_type:
+        | "manifest"
+        | "receipt"
+        | "certificate"
+        | "report"
+        | "agreement"
       kyc_status: "pending" | "submitted" | "verified" | "rejected"
       org_type: "apartment" | "rwa" | "techpark"
       payment_status: "pending" | "paid" | "overdue" | "cancelled"
@@ -734,21 +1028,45 @@ export type Database = {
         | "delivered"
         | "processed"
         | "cancelled"
+      prepaid_package_status: "pending" | "approved" | "rejected" | "expired"
       recurrence_type: "one_time" | "weekly" | "biweekly" | "monthly"
       ticket_status: "open" | "in_progress" | "resolved" | "closed"
+      trip_status: "in_transit" | "delivered"
       user_role: "bwg" | "collector" | "farmer" | "admin"
-      prepaid_package_status: "pending" | "approved" | "rejected" | "expired"
-      vehicle_type: "auto" | "mini_truck" | "truck" | "tempo"
+      vehicle_doc_type:
+        | "rc"
+        | "insurance"
+        | "tax_receipt"
+        | "emission_cert"
+        | "fitness_cert"
+      vehicle_type:
+        | "auto"
+        | "mini_truck"
+        | "truck"
+        | "tempo"
+        | "pickup"
+        | "light_truck"
+        | "medium_truck"
+        | "tipper"
+        | "trolley"
     }
     CompositeTypes: {
-      [_ in never]: never
+      geometry_dump: {
+        path: number[] | null
+        geom: unknown
+      }
+      valid_detail: {
+        valid: boolean | null
+        reason: string | null
+        location: unknown
+      }
     }
   }
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof DatabaseWithoutInternals, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
@@ -779,6 +1097,56 @@ export type Tables<
       : never
     : never
 
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
@@ -795,3 +1163,69 @@ export type Enums<
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      compliance_doc_type: [
+        "manifest",
+        "receipt",
+        "certificate",
+        "report",
+        "agreement",
+      ],
+      kyc_status: ["pending", "submitted", "verified", "rejected"],
+      org_type: ["apartment", "rwa", "techpark"],
+      payment_status: ["pending", "paid", "overdue", "cancelled"],
+      pickup_status: [
+        "requested",
+        "assigned",
+        "picked_up",
+        "in_transit",
+        "delivered",
+        "processed",
+        "cancelled",
+      ],
+      prepaid_package_status: ["pending", "approved", "rejected", "expired"],
+      recurrence_type: ["one_time", "weekly", "biweekly", "monthly"],
+      ticket_status: ["open", "in_progress", "resolved", "closed"],
+      trip_status: ["in_transit", "delivered"],
+      user_role: ["bwg", "collector", "farmer", "admin"],
+      vehicle_doc_type: [
+        "rc",
+        "insurance",
+        "tax_receipt",
+        "emission_cert",
+        "fitness_cert",
+      ],
+      vehicle_type: [
+        "auto",
+        "mini_truck",
+        "truck",
+        "tempo",
+        "pickup",
+        "light_truck",
+        "medium_truck",
+        "tipper",
+        "trolley",
+      ],
+    },
+  },
+} as const

@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
 import { BarChart3, Truck, Weight, Recycle } from "lucide-react";
+import type { PickupStatus } from "@/types";
 
 interface OrgSummary {
   name: string;
@@ -86,7 +87,7 @@ export default function AdminReportsPage() {
 
   if (loading) return <DashboardSkeleton />;
 
-  const statuses = ["requested", "assigned", "picked_up", "in_transit", "delivered", "processed", "cancelled"];
+  const statuses: PickupStatus[] = ["requested", "assigned", "picked_up", "in_transit", "delivered", "processed", "cancelled"];
 
   return (
     <div className="space-y-6">

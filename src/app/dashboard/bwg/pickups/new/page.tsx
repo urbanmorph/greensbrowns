@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/hooks/use-user";
+import { useOrganization } from "@/hooks/use-organization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,8 +67,7 @@ async function compressImage(file: File): Promise<Blob> {
 }
 
 export default function SchedulePickupPage() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+  const { user, orgId: memberOrgId, loading: orgLoading, supabase } = useOrganization();
   const router = useRouter();
 
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -96,38 +94,34 @@ export default function SchedulePickupPage() {
   });
 
   useEffect(() => {
-    if (!user) return;
+    if (orgLoading || !user) return;
+    if (!memberOrgId) {
+      setLoading(false);
+      return;
+    }
     async function fetchOrg() {
-      const { data } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user!.id)
+      setOrgId(memberOrgId);
+
+      // Fetch active prepaid package (earliest expiring first)
+      const { data: prepaidData } = await supabase
+        .from("prepaid_packages")
+        .select("id, pickup_count, used_count, expires_at")
+        .eq("organization_id", memberOrgId!)
+        .eq("status", "approved")
+        .gt("expires_at", new Date().toISOString())
+        .order("expires_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
-      if (data) {
-        setOrgId(data.organization_id);
-
-        // Fetch active prepaid package (earliest expiring first)
-        const { data: prepaidData } = await supabase
-          .from("prepaid_packages")
-          .select("id, pickup_count, used_count, expires_at")
-          .eq("organization_id", data.organization_id)
-          .eq("status", "approved")
-          .gt("expires_at", new Date().toISOString())
-          .order("expires_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (prepaidData && prepaidData.pickup_count > prepaidData.used_count) {
-          setPrepaidPackage(prepaidData);
-        }
+      if (prepaidData && prepaidData.pickup_count > prepaidData.used_count) {
+        setPrepaidPackage(prepaidData);
       }
       setLoading(false);
     }
     fetchOrg();
-  }, [user, supabase]);
+  }, [user, memberOrgId, orgLoading, supabase]);
 
-  if (userLoading || loading) return <DashboardSkeleton />;
+  if (orgLoading || loading) return <DashboardSkeleton />;
 
   if (!orgId) {
     return (

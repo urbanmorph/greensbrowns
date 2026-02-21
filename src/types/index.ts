@@ -1,4 +1,4 @@
-export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus, VehicleDocType } from "./enums";
+export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus, VehicleDocType, TripStatus } from "./enums";
 
 export interface Profile {
   id: string;
@@ -35,7 +35,6 @@ export interface Pickup {
   pickup_number: string;
   organization_id: string;
   requested_by: string;
-  collector_id: string | null;
   farmer_id: string | null;
   vehicle_id: string | null;
   prepaid_package_id: string | null;
@@ -45,6 +44,8 @@ export interface Pickup {
   recurrence: import("./enums").RecurrenceType;
   estimated_weight_kg: number | null;
   actual_weight_kg: number | null;
+  loading_helper_required: boolean;
+  waste_photo_urls: string[];
   photo_before_url: string | null;
   photo_after_url: string | null;
   notes: string | null;
@@ -138,4 +139,37 @@ export interface AssignedPackage {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface FarmerDetails {
+  id: string;
+  profile_id: string;
+  farm_name: string | null;
+  farm_address: string | null;
+  farm_lat: number | null;
+  farm_lng: number | null;
+  land_area_acres: number | null;
+  capacity_kg_per_month: number | null;
+  compost_types: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PickupTrip {
+  id: string;
+  pickup_id: string;
+  trip_number: number;
+  status: import("./enums").TripStatus;
+  photo_urls: string[];
+  photo_metadata: Array<{
+    url: string;
+    lat: number | null;
+    lng: number | null;
+    timestamp: string;
+  }>;
+  started_at: string;
+  delivered_at: string | null;
+  notes: string | null;
+  created_at: string;
 }

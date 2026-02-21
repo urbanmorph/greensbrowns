@@ -117,19 +117,19 @@ export function AppSidebar({ role, userName, hasOrg = true }: AppSidebarProps) {
               </SidebarGroupContent>
             </SidebarGroup>
           ))
-        ) : (
+        ) : NAV_ITEMS[role as keyof typeof NAV_ITEMS] ? (
           <SidebarGroup>
             <SidebarGroupLabel>Navigation</SidebarGroupLabel>
             <SidebarGroupContent>
               <NavMenuItems
-                items={NAV_ITEMS[role as Exclude<UserRole, "admin">]}
+                items={NAV_ITEMS[role as keyof typeof NAV_ITEMS]}
                 pathname={pathname}
                 role={role}
                 hasOrg={hasOrg}
               />
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
+        ) : null}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <Link href="/dashboard/profile" className="flex items-center gap-3">

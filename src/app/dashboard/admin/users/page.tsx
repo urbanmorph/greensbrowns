@@ -17,16 +17,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { KycReviewDialog } from "@/components/shared/kyc-review-dialog";
-import { ROLES } from "@/lib/constants";
+import { ROLES, KYC_STATUS_COLORS } from "@/lib/constants";
 import { Users, ClipboardCheck } from "lucide-react";
 import type { Profile, UserRole, KycStatus } from "@/types";
-
-const KYC_COLORS: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-800",
-  submitted: "bg-blue-100 text-blue-800",
-  verified: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-};
 
 export default function AdminUsersPage() {
   const supabase = createClient();
@@ -39,6 +32,7 @@ export default function AdminUsersPage() {
       const { data } = await supabase
         .from("profiles")
         .select("*")
+        .neq("role", "farmer")
         .order("created_at", { ascending: false });
 
       if (data) setProfiles(data as Profile[]);
@@ -102,7 +96,7 @@ export default function AdminUsersPage() {
                     <TableCell>
                       <Badge
                         variant="secondary"
-                        className={KYC_COLORS[profile.kyc_status]}
+                        className={KYC_STATUS_COLORS[profile.kyc_status]}
                       >
                         {profile.kyc_status}
                       </Badge>

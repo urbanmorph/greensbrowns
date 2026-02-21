@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/hooks/use-user";
+import { useOrganization } from "@/hooks/use-organization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,31 +22,22 @@ import Link from "next/link";
 import type { Pickup } from "@/types";
 
 export default function BwgPickupsPage() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+  const { user, orgId, loading: orgLoading, supabase } = useOrganization();
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (orgLoading || !user) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     async function fetchPickups() {
-      // Get user's org
-      const { data: membership } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-
-      if (!membership) {
-        setLoading(false);
-        return;
-      }
-
       const { data } = await supabase
         .from("pickups")
         .select("*")
-        .eq("organization_id", membership.organization_id)
+        .eq("organization_id", orgId!)
         .order("scheduled_date", { ascending: false });
 
       if (data) setPickups(data as Pickup[]);
@@ -56,7 +46,7 @@ export default function BwgPickupsPage() {
       const { data: prepaidData } = await supabase
         .from("prepaid_packages")
         .select("pickup_count, used_count")
-        .eq("organization_id", membership.organization_id)
+        .eq("organization_id", orgId!)
         .eq("status", "approved")
         .gt("expires_at", new Date().toISOString());
 
@@ -71,9 +61,9 @@ export default function BwgPickupsPage() {
       setLoading(false);
     }
     fetchPickups();
-  }, [user, supabase]);
+  }, [user, orgId, orgLoading, supabase]);
 
-  if (userLoading || loading) return <DashboardSkeleton />;
+  if (orgLoading || loading) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">

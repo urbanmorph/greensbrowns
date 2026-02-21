@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/hooks/use-user";
+import { useOrganization } from "@/hooks/use-organization";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +20,7 @@ import { StatCard } from "@/components/shared/stat-card";
 import { PREPAID_STATUS_LABELS, PREPAID_STATUS_COLORS } from "@/lib/constants";
 import { CreditCard, Clock, Package, CalendarDays, Truck } from "lucide-react";
 import { toast } from "sonner";
+import { formatPaise } from "@/lib/utils";
 import type { PrepaidPackage, PrepaidPackagePlan } from "@/types";
 
 interface AssignedPackageWithPlan {
@@ -31,18 +31,8 @@ interface AssignedPackageWithPlan {
   prepaid_package_plans: PrepaidPackagePlan;
 }
 
-function formatPrice(paise: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(paise / 100);
-}
-
 export default function BwgPrepaidPage() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+  const { user, orgId: memberOrgId, loading: orgLoading, supabase } = useOrganization();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [packages, setPackages] = useState<PrepaidPackage[]>([]);
   const [assignedPackages, setAssignedPackages] = useState<AssignedPackageWithPlan[]>([]);
@@ -70,28 +60,21 @@ export default function BwgPrepaidPage() {
   }
 
   useEffect(() => {
-    if (!user) return;
+    if (orgLoading || !user) return;
+    if (!memberOrgId) {
+      setLoading(false);
+      return;
+    }
     async function fetchData() {
-      const { data: membership } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-
-      if (!membership) {
-        setLoading(false);
-        return;
-      }
-
-      setOrgId(membership.organization_id);
+      setOrgId(memberOrgId);
       await Promise.all([
-        fetchPackages(membership.organization_id),
-        fetchAssignedPackages(membership.organization_id),
+        fetchPackages(memberOrgId!),
+        fetchAssignedPackages(memberOrgId!),
       ]);
       setLoading(false);
     }
     fetchData();
-  }, [user, supabase]);
+  }, [user, memberOrgId, orgLoading, supabase]);
 
   async function handleSelectPlan(assignedPkg: AssignedPackageWithPlan) {
     if (!orgId || !user) return;
@@ -104,7 +87,7 @@ export default function BwgPrepaidPage() {
       requested_by: user.id,
       pickup_count: plan.pickup_count,
       plan_id: assignedPkg.plan_id,
-      notes: `Selected plan: ${plan.name} (${formatPrice(assignedPkg.price_paise)})`,
+      notes: `Selected plan: ${plan.name} (${formatPaise(assignedPkg.price_paise)})`,
     });
 
     if (error) {
@@ -143,7 +126,7 @@ export default function BwgPrepaidPage() {
 
   const canRequestNew = !hasActivePackage && !hasPendingRequest;
 
-  if (userLoading || loading) return <DashboardSkeleton />;
+  if (orgLoading || loading) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -196,7 +179,7 @@ export default function BwgPrepaidPage() {
                   <CardHeader>
                     <CardTitle className="text-base">{plan.name}</CardTitle>
                     <CardDescription>
-                      {formatPrice(ap.price_paise)}
+                      {formatPaise(ap.price_paise)}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex-1 space-y-3">

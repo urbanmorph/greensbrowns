@@ -19,6 +19,7 @@ import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { PREPAID_STATUS_LABELS, PREPAID_STATUS_COLORS } from "@/lib/constants";
 import { CreditCard, Check, X } from "lucide-react";
 import { toast } from "sonner";
+import type { PrepaidPackageStatus } from "@/types";
 
 interface PrepaidPlan {
   validity_days: number;
@@ -29,7 +30,7 @@ interface PrepaidWithDetails {
   organization_id: string;
   pickup_count: number;
   used_count: number;
-  status: string;
+  status: PrepaidPackageStatus;
   requested_by: string;
   approved_by: string | null;
   approved_at: string | null;

@@ -8,11 +8,12 @@ import { StatCard } from "@/components/shared/stat-card";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
 import { Users, Truck, Building2, BarChart3 } from "lucide-react";
+import type { PickupStatus } from "@/types";
 
 interface RecentPickup {
   id: string;
   pickup_number: string | null;
-  status: string;
+  status: PickupStatus;
   scheduled_date: string;
   organizations: { name: string } | null;
 }

@@ -11,17 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { KycUploadForm } from "@/components/shared/kyc-upload-form";
-import { ROLES } from "@/lib/constants";
+import { ROLES, KYC_STATUS_COLORS } from "@/lib/constants";
 import { User, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { UserRole, KycStatus } from "@/types";
-
-const KYC_COLORS: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-800",
-  submitted: "bg-blue-100 text-blue-800",
-  verified: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-};
 
 export default function ProfilePage() {
   const { user, profile, loading: userLoading } = useUser();
@@ -107,7 +100,7 @@ export default function ProfilePage() {
               <p className="text-sm text-muted-foreground">KYC Status</p>
               <Badge
                 variant="secondary"
-                className={KYC_COLORS[kycStatus]}
+                className={KYC_STATUS_COLORS[kycStatus]}
               >
                 {kycStatus}
               </Badge>

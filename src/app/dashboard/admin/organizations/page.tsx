@@ -35,6 +35,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { Building2, Package, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { formatPaise } from "@/lib/utils";
 
 const ORG_TYPE_LABELS: Record<string, string> = {
   apartment: "Apartment",
@@ -102,25 +103,35 @@ export default function AdminOrganizationsPage() {
         return;
       }
 
-      const orgsWithCounts = await Promise.all(
-        data.map(async (org) => {
-          const { count: memberCount } = await supabase
-            .from("organization_members")
-            .select("*", { count: "exact", head: true })
-            .eq("organization_id", org.id);
+      const orgIds = data.map((o) => o.id);
 
-          const { count: pickupCount } = await supabase
-            .from("pickups")
-            .select("*", { count: "exact", head: true })
-            .eq("organization_id", org.id);
+      // Batch count: members per org
+      const { data: memberCounts } = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .in("organization_id", orgIds);
 
-          return {
-            ...org,
-            member_count: memberCount || 0,
-            pickup_count: pickupCount || 0,
-          };
-        })
-      );
+      const memberMap = new Map<string, number>();
+      for (const m of memberCounts || []) {
+        memberMap.set(m.organization_id, (memberMap.get(m.organization_id) || 0) + 1);
+      }
+
+      // Batch count: pickups per org
+      const { data: pickupRows } = await supabase
+        .from("pickups")
+        .select("organization_id")
+        .in("organization_id", orgIds);
+
+      const pickupMap = new Map<string, number>();
+      for (const p of pickupRows || []) {
+        pickupMap.set(p.organization_id, (pickupMap.get(p.organization_id) || 0) + 1);
+      }
+
+      const orgsWithCounts = data.map((org) => ({
+        ...org,
+        member_count: memberMap.get(org.id) || 0,
+        pickup_count: pickupMap.get(org.id) || 0,
+      }));
 
       setOrgs(orgsWithCounts);
       setLoading(false);
@@ -257,10 +268,6 @@ export default function AdminOrganizationsPage() {
     toast.success(
       `Package ${!currentActive ? "activated" : "deactivated"}`
     );
-  }
-
-  function formatPaise(paise: number): string {
-    return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
   }
 
   if (loading) return <DashboardSkeleton />;

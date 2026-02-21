@@ -5,8 +5,6 @@ import {
   FileText,
   Users,
   BarChart3,
-  Package,
-  Leaf,
   Sprout,
   Wrench,
   ShieldCheck,
@@ -15,7 +13,7 @@ import {
   IndianRupee,
   type LucideIcon,
 } from "lucide-react";
-import type { UserRole, VehicleType, VehicleDocType } from "@/types/enums";
+import type { UserRole, KycStatus, PickupStatus, PrepaidPackageStatus, VehicleType, VehicleDocType, TripStatus } from "@/types/enums";
 
 export const APP_NAME = "GreensBrowns";
 export const APP_DESCRIPTION =
@@ -51,7 +49,7 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-export const NAV_ITEMS: Record<Exclude<UserRole, "admin">, NavItem[]> = {
+export const NAV_ITEMS: Record<"bwg", NavItem[]> = {
   bwg: [
     { title: "Dashboard", href: "/dashboard/bwg", icon: Home },
     { title: "Pickups", href: "/dashboard/bwg/pickups", icon: Truck },
@@ -59,16 +57,15 @@ export const NAV_ITEMS: Record<Exclude<UserRole, "admin">, NavItem[]> = {
     { title: "Compliance", href: "/dashboard/bwg/compliance", icon: FileText },
     { title: "Prepaid", href: "/dashboard/bwg/prepaid", icon: CreditCard },
   ],
-  collector: [
-    { title: "Dashboard", href: "/dashboard/collector", icon: Home },
-    { title: "Jobs", href: "/dashboard/collector/jobs", icon: Package },
-  ],
-  farmer: [
-    { title: "Dashboard", href: "/dashboard/farmer", icon: Home },
-    { title: "Deliveries", href: "/dashboard/farmer/deliveries", icon: Truck },
-    { title: "Compost", href: "/dashboard/farmer/compost", icon: Leaf },
-  ],
 };
+
+export const COMPOST_TYPE_OPTIONS = [
+  { value: "vermicompost", label: "Vermicompost" },
+  { value: "aerobic_compost", label: "Aerobic Compost" },
+  { value: "biochar", label: "Biochar" },
+  { value: "mulch", label: "Mulch" },
+  { value: "leaf_mold", label: "Leaf Mold" },
+] as const;
 
 export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
@@ -79,7 +76,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { title: "Pickups", href: "/dashboard/admin/pickups", icon: Truck },
       { title: "Organizations", href: "/dashboard/admin/organizations", icon: Building2 },
       { title: "Prepaid", href: "/dashboard/admin/prepaid", icon: CreditCard },
-      { title: "Collectors", href: "/dashboard/admin/collectors", icon: Truck },
       { title: "Farmers", href: "/dashboard/admin/farmers", icon: Sprout },
       { title: "Reports", href: "/dashboard/admin/reports", icon: BarChart3 },
     ],
@@ -94,7 +90,14 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export const PICKUP_STATUS_LABELS: Record<string, string> = {
+export const KYC_STATUS_COLORS: Record<KycStatus, string> = {
+  pending: "bg-gray-100 text-gray-800",
+  submitted: "bg-blue-100 text-blue-800",
+  verified: "bg-green-100 text-green-800",
+  rejected: "bg-red-100 text-red-800",
+};
+
+export const PICKUP_STATUS_LABELS: Record<PickupStatus, string> = {
   requested: "Requested",
   assigned: "Assigned",
   picked_up: "Picked Up",
@@ -104,7 +107,7 @@ export const PICKUP_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export const PICKUP_STATUS_COLORS: Record<string, string> = {
+export const PICKUP_STATUS_COLORS: Record<PickupStatus, string> = {
   requested: "bg-blue-100 text-blue-800",
   assigned: "bg-yellow-100 text-yellow-800",
   picked_up: "bg-orange-100 text-orange-800",
@@ -114,14 +117,14 @@ export const PICKUP_STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-export const PREPAID_STATUS_LABELS: Record<string, string> = {
+export const PREPAID_STATUS_LABELS: Record<PrepaidPackageStatus, string> = {
   pending: "Pending",
   approved: "Active",
   rejected: "Rejected",
   expired: "Expired",
 };
 
-export const PREPAID_STATUS_COLORS: Record<string, string> = {
+export const PREPAID_STATUS_COLORS: Record<PrepaidPackageStatus, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   approved: "bg-green-100 text-green-800",
   rejected: "bg-red-100 text-red-800",
@@ -158,4 +161,14 @@ export const VEHICLE_DOC_LABELS: Record<VehicleDocType, string> = {
   tax_receipt: "Tax Paid Receipt",
   emission_cert: "Emission Certificate",
   fitness_cert: "Fitness Certificate",
+};
+
+export const TRIP_STATUS_LABELS: Record<TripStatus, string> = {
+  in_transit: "In Transit",
+  delivered: "Delivered",
+};
+
+export const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
+  in_transit: "bg-purple-100 text-purple-800",
+  delivered: "bg-green-100 text-green-800",
 };

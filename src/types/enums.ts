@@ -31,3 +31,5 @@ export type VehicleType = "auto" | "mini_truck" | "pickup" | "light_truck" | "me
 export type PrepaidPackageStatus = "pending" | "approved" | "rejected" | "expired";
 
 export type VehicleDocType = "rc" | "insurance" | "tax_receipt" | "emission_cert" | "fitness_cert";
+
+export type TripStatus = "in_transit" | "delivered";

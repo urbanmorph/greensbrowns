@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/hooks/use-user";
+import { useOrganization } from "@/hooks/use-organization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,38 +45,30 @@ interface ComplianceDoc {
 }
 
 export default function CompliancePage() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+  const { user, orgId, loading: orgLoading, supabase } = useOrganization();
   const [docs, setDocs] = useState<ComplianceDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (orgLoading || !user) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     async function fetchDocs() {
-      const { data: membership } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-
-      if (!membership) {
-        setLoading(false);
-        return;
-      }
-
       const { data } = await supabase
         .from("compliance_docs")
         .select("id, doc_type, file_url, generated_at, pickup_id, pickup:pickup_id(pickup_number)")
-        .eq("organization_id", membership.organization_id)
+        .eq("organization_id", orgId!)
         .order("generated_at", { ascending: false });
 
       if (data) setDocs(data as unknown as ComplianceDoc[]);
       setLoading(false);
     }
     fetchDocs();
-  }, [user, supabase]);
+  }, [user, orgId, orgLoading, supabase]);
 
-  if (userLoading || loading) return <DashboardSkeleton />;
+  if (orgLoading || loading) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">

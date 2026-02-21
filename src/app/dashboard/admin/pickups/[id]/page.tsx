@@ -5,40 +5,32 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
 import { useRealtime } from "@/hooks/use-realtime";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { PhotoDisplay } from "@/components/shared/photo-display";
+import { TripCard } from "@/components/shared/trip-card";
 import { PickupDetailCard } from "@/components/shared/pickup-detail-card";
 import { PickupTimeline } from "@/components/shared/pickup-timeline";
-import { ArrowLeft, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { TripCard } from "@/components/shared/trip-card";
 import type { Pickup, PickupEvent, PickupTrip } from "@/types";
 
-export default function PickupDetailPage() {
+export default function AdminPickupDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, loading: userLoading } = useUser();
   const supabase = createClient();
 
   const [pickup, setPickup] = useState<Pickup | null>(null);
   const [events, setEvents] = useState<(PickupEvent & { profile_name?: string })[]>([]);
+  const [trips, setTrips] = useState<PickupTrip[]>([]);
+  const [orgName, setOrgName] = useState<string | null>(null);
   const [vehicleRegNumber, setVehicleRegNumber] = useState<string | null>(null);
   const [farmerName, setFarmerName] = useState<string | null>(null);
-  const [trips, setTrips] = useState<PickupTrip[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cancelling, setCancelling] = useState(false);
-
-  const refetchTrips = useCallback(async () => {
-    const { data } = await supabase
-      .from("pickup_trips")
-      .select("*")
-      .eq("pickup_id", id)
-      .order("trip_number", { ascending: true });
-    if (data) setTrips(data as unknown as PickupTrip[]);
-  }, [supabase, id]);
+  const [markingDelivered, setMarkingDelivered] = useState(false);
+  const [generatingManifest, setGeneratingManifest] = useState(false);
+  const [markingProcessed, setMarkingProcessed] = useState(false);
 
   const refetchEvents = useCallback(async () => {
     const { data: eventsData } = await supabase
@@ -57,12 +49,21 @@ export default function PickupDetailPage() {
     }
   }, [supabase, id]);
 
+  const refetchTrips = useCallback(async () => {
+    const { data } = await supabase
+      .from("pickup_trips")
+      .select("*")
+      .eq("pickup_id", id)
+      .order("trip_number", { ascending: true });
+    if (data) setTrips(data as unknown as PickupTrip[]);
+  }, [supabase, id]);
+
   // Realtime: pickup updates
   useRealtime({
     table: "pickups",
     filter: `id=eq.${id}`,
     event: "UPDATE",
-    channelName: `bwg-pickup-${id}`,
+    channelName: `admin-pickup-${id}`,
     onData: (payload) => {
       const updated = payload.new as Record<string, unknown>;
       setPickup((prev) => (prev ? { ...prev, ...updated } : prev));
@@ -74,7 +75,7 @@ export default function PickupDetailPage() {
     table: "pickup_events",
     filter: `pickup_id=eq.${id}`,
     event: "INSERT",
-    channelName: `bwg-pickup-events-${id}`,
+    channelName: `admin-pickup-events-${id}`,
     onData: () => {
       refetchEvents();
     },
@@ -85,7 +86,7 @@ export default function PickupDetailPage() {
     table: "pickup_trips",
     filter: `pickup_id=eq.${id}`,
     event: "*",
-    channelName: `bwg-pickup-trips-${id}`,
+    channelName: `admin-pickup-trips-${id}`,
     onData: () => {
       refetchTrips();
     },
@@ -107,7 +108,35 @@ export default function PickupDetailPage() {
 
       setPickup(pickupData as Pickup);
 
-      // Fetch events with changer names
+      // Fetch org name
+      const { data: orgData } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", pickupData.organization_id)
+        .single();
+      if (orgData) setOrgName(orgData.name);
+
+      // Fetch vehicle info
+      if (pickupData.vehicle_id) {
+        const { data } = await supabase
+          .from("vehicles")
+          .select("registration_number")
+          .eq("id", pickupData.vehicle_id)
+          .single();
+        if (data) setVehicleRegNumber(data.registration_number);
+      }
+
+      // Fetch farmer info
+      if (pickupData.farmer_id) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", pickupData.farmer_id)
+          .single();
+        if (data) setFarmerName(data.full_name);
+      }
+
+      // Fetch events
       const { data: eventsData } = await supabase
         .from("pickup_events")
         .select("*, profiles:changed_by(full_name)")
@@ -123,24 +152,6 @@ export default function PickupDetailPage() {
         );
       }
 
-      // Fetch vehicle/farmer info
-      if (pickupData.vehicle_id) {
-        const { data } = await supabase
-          .from("vehicles")
-          .select("registration_number")
-          .eq("id", pickupData.vehicle_id)
-          .single();
-        if (data) setVehicleRegNumber(data.registration_number);
-      }
-      if (pickupData.farmer_id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", pickupData.farmer_id)
-          .single();
-        if (data) setFarmerName(data.full_name);
-      }
-
       // Fetch trips
       const { data: tripsData } = await supabase
         .from("pickup_trips")
@@ -154,31 +165,88 @@ export default function PickupDetailPage() {
     fetchData();
   }, [user, id, supabase]);
 
-  async function handleCancel() {
+  async function handleMarkDelivered() {
     if (!user || !pickup) return;
-    setCancelling(true);
+    setMarkingDelivered(true);
 
     const { error } = await supabase
       .from("pickups")
-      .update({ status: "cancelled" })
+      .update({ status: "delivered" })
       .eq("id", pickup.id);
 
     if (error) {
-      toast.error("Failed to cancel pickup");
-      setCancelling(false);
+      toast.error("Failed to mark as delivered");
+      setMarkingDelivered(false);
       return;
     }
 
     await supabase.from("pickup_events").insert({
       pickup_id: pickup.id,
-      status: "cancelled",
+      status: "delivered",
       changed_by: user.id,
-      notes: "Cancelled by BWG",
+      notes: "Marked delivered by admin after farmer verification",
     });
 
-    setPickup({ ...pickup, status: "cancelled" });
-    toast.success("Pickup cancelled");
-    setCancelling(false);
+    setPickup({ ...pickup, status: "delivered" });
+    toast.success("Pickup marked as delivered");
+    setMarkingDelivered(false);
+  }
+
+  async function handleGenerateManifest() {
+    if (!user || !pickup) return;
+    setGeneratingManifest(true);
+
+    const { error } = await supabase.from("compliance_docs").insert({
+      doc_type: "manifest",
+      organization_id: pickup.organization_id,
+      pickup_id: pickup.id,
+      metadata: {
+        pickup_number: pickup.pickup_number,
+        scheduled_date: pickup.scheduled_date,
+        vehicle: vehicleRegNumber,
+        farmer: farmerName,
+        estimated_weight_kg: pickup.estimated_weight_kg,
+        actual_weight_kg: pickup.actual_weight_kg,
+        trip_count: trips.length,
+        generated_by: user.id,
+      },
+    });
+
+    if (error) {
+      toast.error("Failed to generate manifest");
+      setGeneratingManifest(false);
+      return;
+    }
+
+    toast.success("Transport manifest generated");
+    setGeneratingManifest(false);
+  }
+
+  async function handleMarkProcessed() {
+    if (!user || !pickup) return;
+    setMarkingProcessed(true);
+
+    const { error } = await supabase
+      .from("pickups")
+      .update({ status: "processed" })
+      .eq("id", pickup.id);
+
+    if (error) {
+      toast.error("Failed to mark as processed");
+      setMarkingProcessed(false);
+      return;
+    }
+
+    await supabase.from("pickup_events").insert({
+      pickup_id: pickup.id,
+      status: "processed",
+      changed_by: user.id,
+      notes: "Marked processed by admin",
+    });
+
+    setPickup({ ...pickup, status: "processed" });
+    toast.success("Pickup marked as processed");
+    setMarkingProcessed(false);
   }
 
   if (userLoading || loading) return <DashboardSkeleton />;
@@ -187,7 +255,7 @@ export default function PickupDetailPage() {
       <div className="space-y-6">
         <PageHeader title="Pickup not found" />
         <Button variant="outline" asChild>
-          <Link href="/dashboard/bwg/pickups">
+          <Link href="/dashboard/admin/pickups">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Pickups
           </Link>
         </Button>
@@ -201,7 +269,7 @@ export default function PickupDetailPage() {
         title={`Pickup ${pickup.pickup_number}`}
         action={
           <Button variant="outline" asChild>
-            <Link href="/dashboard/bwg/pickups">
+            <Link href="/dashboard/admin/pickups">
               <ArrowLeft className="mr-2 h-4 w-4" /> Back
             </Link>
           </Button>
@@ -213,56 +281,43 @@ export default function PickupDetailPage() {
           pickup={pickup}
           vehicleRegNumber={vehicleRegNumber}
           farmerName={farmerName}
+          orgName={orgName}
         />
         <PickupTimeline events={events} />
       </div>
 
-      <PhotoDisplay
-        beforeUrl={pickup.photo_before_url}
-        afterUrl={pickup.photo_after_url}
-      />
+      <TripCard trips={trips} showGeoData={true} />
 
-      {pickup.waste_photo_urls.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Waste Photos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-3 flex-wrap">
-                {pickup.waste_photo_urls.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="h-32 w-32 rounded-md overflow-hidden border hover:ring-2 ring-primary transition-all"
-                  >
-                    <img
-                      src={url}
-                      alt={`Waste photo ${i + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </a>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-      <TripCard trips={trips} />
-
-      {pickup.status === "requested" && (
-        <div className="flex justify-end">
+      <div className="flex gap-3 justify-end">
+        {pickup.status === "picked_up" && (
           <Button
-            variant="destructive"
-            onClick={handleCancel}
-            disabled={cancelling}
+            onClick={handleMarkDelivered}
+            disabled={markingDelivered}
           >
-            <XCircle className="mr-2 h-4 w-4" />
-            {cancelling ? "Cancelling..." : "Cancel Pickup"}
+            <CheckCircle className="mr-2 h-4 w-4" />
+            {markingDelivered ? "Marking..." : "Mark Delivered"}
           </Button>
-        </div>
-      )}
+        )}
+        {pickup.status === "delivered" && (
+          <>
+            <Button
+              onClick={handleMarkProcessed}
+              disabled={markingProcessed}
+            >
+              <CheckCircle className="mr-2 h-4 w-4" />
+              {markingProcessed ? "Marking..." : "Mark Processed"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleGenerateManifest}
+              disabled={generatingManifest}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              {generatingManifest ? "Generating..." : "Generate Manifest"}
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { Building2, MapPin, Pencil } from "lucide-react";
+import LocationPicker from "@/components/shared/location-picker-dynamic";
+import { buildOsmEmbedUrl } from "@/lib/utils";
+import { Building2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import { jsPDF } from "jspdf";
@@ -41,7 +43,6 @@ export default function OrganizationPage() {
   const [pincode, setPincode] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
-  const [locating, setLocating] = useState(false);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
 
   useEffect(() => {
@@ -262,7 +263,7 @@ export default function OrganizationPage() {
                     height="200"
                     style={{ border: 0 }}
                     loading="lazy"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(org.lng) - 0.005}%2C${Number(org.lat) - 0.003}%2C${Number(org.lng) + 0.005}%2C${Number(org.lat) + 0.003}&layer=mapnik&marker=${org.lat}%2C${org.lng}`}
+                    src={buildOsmEmbedUrl(Number(org.lat), Number(org.lng))}
                   />
                 </div>
               </div>
@@ -334,70 +335,14 @@ export default function OrganizationPage() {
             </div>
             <div className="space-y-2">
               <Label>Map Location</Label>
-              <div className="flex gap-2 items-end">
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="lat" className="text-xs text-muted-foreground">Latitude</Label>
-                  <Input
-                    id="lat"
-                    type="number"
-                    value={lat}
-                    onChange={(e) => setLat(e.target.value)}
-                    placeholder="12.9716"
-                    step="any"
-                  />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="lng" className="text-xs text-muted-foreground">Longitude</Label>
-                  <Input
-                    id="lng"
-                    type="number"
-                    value={lng}
-                    onChange={(e) => setLng(e.target.value)}
-                    placeholder="77.5946"
-                    step="any"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={locating}
-                  onClick={() => {
-                    if (!navigator.geolocation) {
-                      toast.error("Geolocation is not supported by your browser");
-                      return;
-                    }
-                    setLocating(true);
-                    navigator.geolocation.getCurrentPosition(
-                      (pos) => {
-                        setLat(pos.coords.latitude.toFixed(6));
-                        setLng(pos.coords.longitude.toFixed(6));
-                        setLocating(false);
-                        toast.success("Location detected");
-                      },
-                      () => {
-                        toast.error("Unable to get your location");
-                        setLocating(false);
-                      }
-                    );
-                  }}
-                >
-                  <MapPin className="mr-1 h-4 w-4" />
-                  {locating ? "Detecting..." : "Use my location"}
-                </Button>
-              </div>
-              {lat && lng && (
-                <div className="rounded-md overflow-hidden border h-[200px] mt-2">
-                  <iframe
-                    title="Selected location"
-                    width="100%"
-                    height="200"
-                    style={{ border: 0 }}
-                    loading="lazy"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(lng) - 0.005}%2C${Number(lat) - 0.003}%2C${Number(lng) + 0.005}%2C${Number(lat) + 0.003}&layer=mapnik&marker=${lat}%2C${lng}`}
-                  />
-                </div>
-              )}
+              <LocationPicker
+                lat={lat ? Number(lat) : null}
+                lng={lng ? Number(lng) : null}
+                onChange={(newLat, newLng) => {
+                  setLat(String(newLat));
+                  setLng(String(newLng));
+                }}
+              />
             </div>
             {!org && (
               <Card>

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/hooks/use-user";
+import { useOrganization } from "@/hooks/use-organization";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,8 +13,7 @@ import Link from "next/link";
 import type { Pickup } from "@/types";
 
 export default function BwgDashboard() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+  const { user, orgId: memberOrgId, loading: orgLoading, supabase } = useOrganization();
   const [stats, setStats] = useState({
     active: 0,
     scheduled: 0,
@@ -27,20 +25,13 @@ export default function BwgDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (orgLoading || !user) return;
+    if (!memberOrgId) {
+      setLoading(false);
+      return;
+    }
     async function fetchData() {
-      const { data: membership } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-
-      if (!membership) {
-        setLoading(false);
-        return;
-      }
-
-      const orgId = membership.organization_id;
+      const orgId = memberOrgId!;
 
       // Fetch all pickups for this org
       const { data: pickups } = await supabase
@@ -88,9 +79,9 @@ export default function BwgDashboard() {
       setLoading(false);
     }
     fetchData();
-  }, [user, supabase]);
+  }, [user, memberOrgId, orgLoading, supabase]);
 
-  if (userLoading || loading) return <DashboardSkeleton />;
+  if (orgLoading || loading) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">
