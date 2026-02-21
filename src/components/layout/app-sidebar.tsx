@@ -16,14 +16,22 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { NAV_ITEMS, ROLES } from "@/lib/constants";
+import { Lock } from "lucide-react";
 import type { UserRole } from "@/types/enums";
+
+const BWG_GATED = [
+  "/dashboard/bwg/pickups",
+  "/dashboard/bwg/prepaid",
+  "/dashboard/bwg/compliance",
+];
 
 interface AppSidebarProps {
   role: UserRole;
   userName: string;
+  hasOrg?: boolean;
 }
 
-export function AppSidebar({ role, userName }: AppSidebarProps) {
+export function AppSidebar({ role, userName, hasOrg = true }: AppSidebarProps) {
   const pathname = usePathname();
   const navItems = NAV_ITEMS[role];
   const initials = userName
@@ -51,16 +59,37 @@ export function AppSidebar({ role, userName }: AppSidebarProps) {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                const isGated =
+                  role === "bwg" &&
+                  !hasOrg &&
+                  BWG_GATED.some((p) => item.href.startsWith(p));
+
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    {isGated ? (
+                      <SidebarMenuButton
+                        disabled
+                        className="opacity-50 cursor-not-allowed"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                        <Lock className="ml-auto h-3 w-3" />
+                      </SidebarMenuButton>
+                    ) : (
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname === item.href}
+                      >
+                        <Link href={item.href}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    )}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

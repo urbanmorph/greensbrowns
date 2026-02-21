@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -18,8 +19,53 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
+import { Camera, CreditCard, ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
-import type { RecurrenceType } from "@/types";
+import Link from "next/link";
+
+const MAX_PHOTOS = 3;
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+async function compressImage(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      // Scale down if larger than 1920px on any side
+      const maxDim = 1920;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      // Start at quality 0.8, reduce if still too large
+      let quality = 0.8;
+      const tryCompress = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return reject(new Error("Compression failed"));
+            if (blob.size > MAX_FILE_SIZE && quality > 0.2) {
+              quality -= 0.1;
+              tryCompress();
+            } else {
+              resolve(blob);
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      tryCompress();
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export default function SchedulePickupPage() {
   const { user, loading: userLoading } = useUser();
@@ -32,9 +78,17 @@ export default function SchedulePickupPage() {
 
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledSlot, setScheduledSlot] = useState("morning");
-  const [recurrence, setRecurrence] = useState<RecurrenceType>("one_time");
-  const [estimatedWeight, setEstimatedWeight] = useState("");
   const [notes, setNotes] = useState("");
+  const [loadingHelper, setLoadingHelper] = useState(false);
+  const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
+  const [prepaidPackage, setPrepaidPackage] = useState<{
+    id: string;
+    pickup_count: number;
+    used_count: number;
+    expires_at: string | null;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -43,10 +97,25 @@ export default function SchedulePickupPage() {
         .from("organization_members")
         .select("organization_id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setOrgId(data.organization_id);
+
+        // Fetch active prepaid package (earliest expiring first)
+        const { data: prepaidData } = await supabase
+          .from("prepaid_packages")
+          .select("id, pickup_count, used_count, expires_at")
+          .eq("organization_id", data.organization_id)
+          .eq("status", "approved")
+          .gt("expires_at", new Date().toISOString())
+          .order("expires_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (prepaidData && prepaidData.pickup_count > prepaidData.used_count) {
+          setPrepaidPackage(prepaidData);
+        }
       }
       setLoading(false);
     }
@@ -76,10 +145,53 @@ export default function SchedulePickupPage() {
     );
   }
 
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    const remaining = MAX_PHOTOS - photos.length;
+    const selected = Array.from(files).slice(0, remaining);
+    const newPhotos = selected.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setPhotos((prev) => [...prev, ...newPhotos]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePhoto(index: number) {
+    setPhotos((prev) => {
+      URL.revokeObjectURL(prev[index].preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !orgId) return;
+    if (photos.length === 0) {
+      toast.error("Please add at least one photo of the waste");
+      return;
+    }
     setSubmitting(true);
+
+    // Upload photos
+    const photoUrls: string[] = [];
+    for (const { file } of photos) {
+      try {
+        const compressed = await compressImage(file);
+        const fileName = `${orgId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from("pickup-photos")
+          .upload(fileName, compressed, { contentType: "image/jpeg" });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage
+          .from("pickup-photos")
+          .getPublicUrl(fileName);
+        photoUrls.push(urlData.publicUrl);
+      } catch {
+        toast.error("Failed to upload a photo, skipping...");
+      }
+    }
 
     const { data, error } = await supabase
       .from("pickups")
@@ -88,9 +200,10 @@ export default function SchedulePickupPage() {
         requested_by: user.id,
         scheduled_date: scheduledDate,
         scheduled_slot: scheduledSlot,
-        recurrence,
-        estimated_weight_kg: estimatedWeight ? Number(estimatedWeight) : null,
         notes: notes || null,
+        loading_helper_required: loadingHelper,
+        waste_photo_urls: photoUrls,
+        prepaid_package_id: prepaidPackage?.id || null,
       })
       .select()
       .single();
@@ -104,19 +217,32 @@ export default function SchedulePickupPage() {
     // Insert initial pickup event
     await supabase.from("pickup_events").insert({
       pickup_id: data.id,
-      status: "scheduled",
+      status: "requested",
       changed_by: user.id,
       notes: "Pickup scheduled",
     });
+
+    // Increment prepaid used_count
+    if (prepaidPackage) {
+      await supabase
+        .from("prepaid_packages")
+        .update({ used_count: prepaidPackage.used_count + 1 })
+        .eq("id", prepaidPackage.id);
+    }
+
+    // Clean up photo previews
+    photos.forEach((p) => URL.revokeObjectURL(p.preview));
 
     toast.success("Pickup scheduled!");
     router.push("/dashboard/bwg/pickups");
   }
 
-  // Tomorrow's date as minimum
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split("T")[0];
+  // Tomorrow's date as minimum (computed in state to avoid hydration mismatch)
+  const [minDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
 
   return (
     <div className="space-y-6">
@@ -124,6 +250,24 @@ export default function SchedulePickupPage() {
         title="Schedule Pickup"
         description="Request a new waste pickup for your organization"
       />
+      {prepaidPackage ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-center gap-3">
+          <CreditCard className="h-5 w-5 text-green-600 shrink-0" />
+          <p className="text-sm text-green-800">
+            <strong>{prepaidPackage.pickup_count - prepaidPackage.used_count}</strong> prepaid credits remaining. This pickup will use 1 credit.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
+          <CreditCard className="h-5 w-5 text-amber-600 shrink-0" />
+          <div className="text-sm text-amber-800">
+            No prepaid credits available. This will be a pay-per-pickup.{" "}
+            <Link href="/dashboard/bwg/prepaid" className="underline font-medium">
+              Buy prepaid credits
+            </Link>
+          </div>
+        </div>
+      )}
       <Card>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -153,35 +297,80 @@ export default function SchedulePickupPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="recurrence">Recurrence</Label>
-                <Select
-                  value={recurrence}
-                  onValueChange={(v) => setRecurrence(v as RecurrenceType)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="one_time">One Time</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Biweekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="loadingHelper"
+                checked={loadingHelper}
+                onCheckedChange={(checked) =>
+                  setLoadingHelper(checked === true)
+                }
+              />
+              <Label htmlFor="loadingHelper" className="cursor-pointer">
+                Loading helper required
+              </Label>
+            </div>
+            <div className="space-y-2">
+              <Label>Waste Photos (at least 1, up to {MAX_PHOTOS}) <span className="text-destructive">*</span></Label>
+              <div className="flex gap-3 flex-wrap">
+                {photos.map((photo, i) => (
+                  <div
+                    key={i}
+                    className="relative h-24 w-24 rounded-md overflow-hidden border"
+                  >
+                    <img
+                      src={photo.preview}
+                      alt={`Waste photo ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(i)}
+                      className="absolute top-1 right-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {photos.length < MAX_PHOTOS && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                    >
+                      <Camera className="h-5 w-5" />
+                      <span className="text-[10px]">Camera</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                    >
+                      <ImagePlus className="h-5 w-5" />
+                      <span className="text-[10px]">Gallery</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="weight">Estimated Weight (kg)</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  value={estimatedWeight}
-                  onChange={(e) => setEstimatedWeight(e.target.value)}
-                  placeholder="e.g. 50"
-                  min="1"
-                />
-              </div>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              <p className="text-xs text-muted-foreground">
+                Take photos with your camera or pick from gallery (max 2MB each)
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="notes">Notes (optional)</Label>

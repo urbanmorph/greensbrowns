@@ -203,25 +203,23 @@ export default function PickupDetailPage() {
               <span className="capitalize">{pickup.scheduled_slot || "—"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Recurrence</span>
-              <span className="capitalize">
-                {pickup.recurrence.replace("_", " ")}
-              </span>
-            </div>
-            <div className="flex justify-between">
               <span className="text-muted-foreground">Estimated Weight</span>
               <span>
                 {pickup.estimated_weight_kg
-                  ? `${pickup.estimated_weight_kg} kg`
+                  ? `${(Number(pickup.estimated_weight_kg) / 1000).toFixed(2)} tonnes`
                   : "—"}
               </span>
             </div>
             {pickup.actual_weight_kg && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Actual Weight</span>
-                <span>{pickup.actual_weight_kg} kg</span>
+                <span>{(Number(pickup.actual_weight_kg) / 1000).toFixed(2)} tonnes</span>
               </div>
             )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Loading Helper</span>
+              <span>{(pickup as Record<string, unknown>).loading_helper_required ? "Required" : "Not needed"}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Collector</span>
               <span>{collectorName || "Not assigned"}</span>
@@ -287,7 +285,35 @@ export default function PickupDetailPage() {
         afterUrl={pickup.photo_after_url}
       />
 
-      {pickup.status === "scheduled" && (
+      {Array.isArray((pickup as Record<string, unknown>).waste_photo_urls) &&
+        ((pickup as Record<string, unknown>).waste_photo_urls as string[]).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Waste Photos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 flex-wrap">
+                {((pickup as Record<string, unknown>).waste_photo_urls as string[]).map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="h-32 w-32 rounded-md overflow-hidden border hover:ring-2 ring-primary transition-all"
+                  >
+                    <img
+                      src={url}
+                      alt={`Waste photo ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+      {pickup.status === "requested" && (
         <div className="flex justify-end">
           <Button
             variant="destructive"

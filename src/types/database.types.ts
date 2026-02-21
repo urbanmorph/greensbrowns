@@ -274,6 +274,7 @@ export type Database = {
           status: Database["public"]["Enums"]["pickup_status"]
           updated_at: string
           vehicle_id: string | null
+          prepaid_package_id: string | null
         }
         Insert: {
           actual_weight_kg?: number | null
@@ -287,6 +288,7 @@ export type Database = {
           photo_after_url?: string | null
           photo_before_url?: string | null
           pickup_number?: string | null
+          prepaid_package_id?: string | null
           recurrence?: Database["public"]["Enums"]["recurrence_type"]
           requested_by: string
           scheduled_date: string
@@ -307,6 +309,7 @@ export type Database = {
           photo_after_url?: string | null
           photo_before_url?: string | null
           pickup_number?: string | null
+          prepaid_package_id?: string | null
           recurrence?: Database["public"]["Enums"]["recurrence_type"]
           requested_by?: string
           scheduled_date?: string
@@ -349,6 +352,80 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickups_prepaid_package_id_fkey"
+            columns: ["prepaid_package_id"]
+            isOneToOne: false
+            referencedRelation: "prepaid_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prepaid_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          pickup_count: number
+          used_count: number
+          status: Database["public"]["Enums"]["prepaid_package_status"]
+          requested_by: string
+          approved_by: string | null
+          approved_at: string | null
+          expires_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          pickup_count: number
+          used_count?: number
+          status?: Database["public"]["Enums"]["prepaid_package_status"]
+          requested_by: string
+          approved_by?: string | null
+          approved_at?: string | null
+          expires_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          pickup_count?: number
+          used_count?: number
+          status?: Database["public"]["Enums"]["prepaid_package_status"]
+          requested_by?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          expires_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prepaid_packages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prepaid_packages_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prepaid_packages_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -544,7 +621,7 @@ export type Database = {
       org_type: "apartment" | "rwa" | "techpark"
       payment_status: "pending" | "paid" | "overdue" | "cancelled"
       pickup_status:
-        | "scheduled"
+        | "requested"
         | "assigned"
         | "picked_up"
         | "in_transit"
@@ -554,6 +631,7 @@ export type Database = {
       recurrence_type: "one_time" | "weekly" | "biweekly" | "monthly"
       ticket_status: "open" | "in_progress" | "resolved" | "closed"
       user_role: "bwg" | "collector" | "farmer" | "admin"
+      prepaid_package_status: "pending" | "approved" | "rejected" | "expired"
       vehicle_type: "auto" | "mini_truck" | "truck" | "tempo"
     }
     CompositeTypes: {

@@ -86,7 +86,7 @@ export default function AdminReportsPage() {
 
   if (loading) return <DashboardSkeleton />;
 
-  const statuses = ["scheduled", "assigned", "picked_up", "in_transit", "delivered", "processed", "cancelled"];
+  const statuses = ["requested", "assigned", "picked_up", "in_transit", "delivered", "processed", "cancelled"];
 
   return (
     <div className="space-y-6">

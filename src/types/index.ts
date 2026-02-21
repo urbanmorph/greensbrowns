@@ -1,4 +1,4 @@
-export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType } from "./enums";
+export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus } from "./enums";
 
 export interface Profile {
   id: string;
@@ -38,6 +38,7 @@ export interface Pickup {
   collector_id: string | null;
   farmer_id: string | null;
   vehicle_id: string | null;
+  prepaid_package_id: string | null;
   status: import("./enums").PickupStatus;
   scheduled_date: string;
   scheduled_slot: string | null;
@@ -46,6 +47,21 @@ export interface Pickup {
   actual_weight_kg: number | null;
   photo_before_url: string | null;
   photo_after_url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrepaidPackage {
+  id: string;
+  organization_id: string;
+  pickup_count: number;
+  used_count: number;
+  status: import("./enums").PrepaidPackageStatus;
+  requested_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  expires_at: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

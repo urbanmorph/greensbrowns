@@ -28,9 +28,17 @@ export default async function DashboardLayout({
   const role = (profile?.role as UserRole) || "bwg";
   const userName = profile?.full_name || user.email || "User";
 
+  // Check if user belongs to an organization (gates BWG nav items)
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const hasOrg = !!membership;
+
   return (
     <SidebarProvider>
-      <AppSidebar role={role} userName={userName} />
+      <AppSidebar role={role} userName={userName} hasOrg={hasOrg} />
       <SidebarInset>
         <Header userName={userName} />
         <main className="flex-1 p-6">{children}</main>

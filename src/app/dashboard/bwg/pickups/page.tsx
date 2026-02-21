@@ -18,7 +18,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
-import { Plus, Truck } from "lucide-react";
+import { Plus, Truck, CreditCard } from "lucide-react";
 import Link from "next/link";
 import type { Pickup } from "@/types";
 
@@ -26,6 +26,7 @@ export default function BwgPickupsPage() {
   const { user, loading: userLoading } = useUser();
   const supabase = createClient();
   const [pickups, setPickups] = useState<Pickup[]>([]);
+  const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function BwgPickupsPage() {
         .from("organization_members")
         .select("organization_id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
 
       if (!membership) {
         setLoading(false);
@@ -50,6 +51,23 @@ export default function BwgPickupsPage() {
         .order("scheduled_date", { ascending: false });
 
       if (data) setPickups(data as Pickup[]);
+
+      // Fetch prepaid credits
+      const { data: prepaidData } = await supabase
+        .from("prepaid_packages")
+        .select("pickup_count, used_count")
+        .eq("organization_id", membership.organization_id)
+        .eq("status", "approved")
+        .gt("expires_at", new Date().toISOString());
+
+      if (prepaidData) {
+        const totalCredits = prepaidData.reduce(
+          (sum, pkg) => sum + (pkg.pickup_count - pkg.used_count),
+          0
+        );
+        setCredits(totalCredits);
+      }
+
       setLoading(false);
     }
     fetchPickups();
@@ -70,6 +88,25 @@ export default function BwgPickupsPage() {
           </Button>
         }
       />
+
+      {credits > 0 ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-center gap-3">
+          <CreditCard className="h-5 w-5 text-green-600 shrink-0" />
+          <p className="text-sm text-green-800">
+            You have <strong>{credits}</strong> prepaid pickup credit{credits !== 1 ? "s" : ""} remaining.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
+          <CreditCard className="h-5 w-5 text-amber-600 shrink-0" />
+          <p className="text-sm text-amber-800">
+            No prepaid credits.{" "}
+            <Link href="/dashboard/bwg/prepaid" className="underline font-medium">
+              Buy prepaid credits
+            </Link>
+          </p>
+        </div>
+      )}
 
       {pickups.length === 0 ? (
         <Card>
@@ -97,7 +134,7 @@ export default function BwgPickupsPage() {
                   <TableHead>Pickup #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Slot</TableHead>
-                  <TableHead>Est. Weight</TableHead>
+                  <TableHead>Est. Weight (t)</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -120,7 +157,7 @@ export default function BwgPickupsPage() {
                     </TableCell>
                     <TableCell>
                       {pickup.estimated_weight_kg
-                        ? `${pickup.estimated_weight_kg} kg`
+                        ? `${(Number(pickup.estimated_weight_kg) / 1000).toFixed(2)} t`
                         : "—"}
                     </TableCell>
                     <TableCell>

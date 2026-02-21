@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/shared/stat-card";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
-import { Truck, Calendar, Weight, FileText } from "lucide-react";
+import { Truck, Calendar, Weight, FileText, CreditCard } from "lucide-react";
 import Link from "next/link";
 import type { Pickup } from "@/types";
 
@@ -21,6 +21,7 @@ export default function BwgDashboard() {
     scheduled: 0,
     totalWeight: 0,
     complianceDocs: 0,
+    prepaidCredits: 0,
   });
   const [recentPickups, setRecentPickups] = useState<Pickup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +33,7 @@ export default function BwgDashboard() {
         .from("organization_members")
         .select("organization_id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
 
       if (!membership) {
         setLoading(false);
@@ -52,7 +53,7 @@ export default function BwgDashboard() {
         const active = pickups.filter(
           (p) => !["processed", "cancelled"].includes(p.status)
         ).length;
-        const scheduled = pickups.filter((p) => p.status === "scheduled").length;
+        const scheduled = pickups.filter((p) => p.status === "requested").length;
         const totalWeight = pickups.reduce(
           (sum, p) => sum + (Number(p.actual_weight_kg) || Number(p.estimated_weight_kg) || 0),
           0
@@ -68,6 +69,22 @@ export default function BwgDashboard() {
         .eq("organization_id", orgId);
       if (count) setStats((s) => ({ ...s, complianceDocs: count }));
 
+      // Fetch prepaid credits
+      const { data: prepaidData } = await supabase
+        .from("prepaid_packages")
+        .select("pickup_count, used_count")
+        .eq("organization_id", orgId)
+        .eq("status", "approved")
+        .gt("expires_at", new Date().toISOString());
+
+      if (prepaidData) {
+        const totalCredits = prepaidData.reduce(
+          (sum, pkg) => sum + (pkg.pickup_count - pkg.used_count),
+          0
+        );
+        setStats((s) => ({ ...s, prepaidCredits: totalCredits }));
+      }
+
       setLoading(false);
     }
     fetchData();
@@ -82,14 +99,19 @@ export default function BwgDashboard() {
         <StatCard title="Active Pickups" value={stats.active} icon={Truck} />
         <StatCard title="Scheduled" value={stats.scheduled} icon={Calendar} />
         <StatCard
-          title="Total Weight (kg)"
-          value={stats.totalWeight}
+          title="Total Weight (tonnes)"
+          value={(stats.totalWeight / 1000).toFixed(2)}
           icon={Weight}
         />
         <StatCard
           title="Compliance Docs"
           value={stats.complianceDocs}
           icon={FileText}
+        />
+        <StatCard
+          title="Prepaid Credits"
+          value={stats.prepaidCredits}
+          icon={CreditCard}
         />
       </div>
       <Card>

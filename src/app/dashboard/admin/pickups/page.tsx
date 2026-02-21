@@ -229,7 +229,7 @@ export default function AdminPickupsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {pickup.status === "scheduled" ? (
+                      {pickup.status === "requested" ? (
                         <Button
                           size="sm"
                           variant="outline"
