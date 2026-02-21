@@ -14,6 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      assigned_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          plan_id: string
+          price_paise: number
+          assigned_by: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          plan_id: string
+          price_paise: number
+          assigned_by?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          plan_id?: string
+          price_paise?: number
+          assigned_by?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assigned_packages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assigned_packages_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "prepaid_package_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assigned_packages_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       compliance_docs: {
         Row: {
           doc_type: Database["public"]["Enums"]["compliance_doc_type"]
@@ -369,7 +424,6 @@ export type Database = {
           name: string
           pickup_count: number
           validity_days: number
-          price_paise: number
           is_active: boolean
           created_by: string | null
           created_at: string
@@ -380,7 +434,6 @@ export type Database = {
           name: string
           pickup_count: number
           validity_days: number
-          price_paise: number
           is_active?: boolean
           created_by?: string | null
           created_at?: string
@@ -391,7 +444,6 @@ export type Database = {
           name?: string
           pickup_count?: number
           validity_days?: number
-          price_paise?: number
           is_active?: boolean
           created_by?: string | null
           created_at?: string

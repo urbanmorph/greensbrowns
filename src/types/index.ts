@@ -57,7 +57,6 @@ export interface PrepaidPackagePlan {
   name: string;
   pickup_count: number;
   validity_days: number;
-  price_paise: number;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -97,6 +96,17 @@ export interface Vehicle {
   registration_number: string;
   vehicle_type: import("./enums").VehicleType;
   capacity_kg: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignedPackage {
+  id: string;
+  organization_id: string;
+  plan_id: string;
+  price_paise: number;
+  assigned_by: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

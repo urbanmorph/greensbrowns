@@ -35,7 +35,6 @@ interface PrepaidPlan {
   name: string;
   pickup_count: number;
   validity_days: number;
-  price_paise: number;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -46,7 +45,6 @@ const emptyForm = {
   name: "",
   pickup_count: "",
   validity_days: "",
-  price_inr: "",
 };
 
 export default function SetupPrepaidPackagesPage() {
@@ -88,7 +86,6 @@ export default function SetupPrepaidPackagesPage() {
       name: plan.name,
       pickup_count: String(plan.pickup_count),
       validity_days: String(plan.validity_days),
-      price_inr: String(plan.price_paise / 100),
     });
     setDialogOpen(true);
   }
@@ -100,7 +97,6 @@ export default function SetupPrepaidPackagesPage() {
     const name = form.name.trim();
     const pickupCount = parseInt(form.pickup_count, 10);
     const validityDays = parseInt(form.validity_days, 10);
-    const priceInr = parseFloat(form.price_inr);
 
     if (!name) {
       toast.error("Plan name is required");
@@ -117,13 +113,6 @@ export default function SetupPrepaidPackagesPage() {
       setSaving(false);
       return;
     }
-    if (isNaN(priceInr) || priceInr <= 0) {
-      toast.error("Price must be greater than 0");
-      setSaving(false);
-      return;
-    }
-
-    const pricePaise = Math.round(priceInr * 100);
 
     if (editingPlan) {
       const { error } = await supabase
@@ -132,7 +121,6 @@ export default function SetupPrepaidPackagesPage() {
           name,
           pickup_count: pickupCount,
           validity_days: validityDays,
-          price_paise: pricePaise,
         })
         .eq("id", editingPlan.id);
 
@@ -151,7 +139,6 @@ export default function SetupPrepaidPackagesPage() {
                 name,
                 pickup_count: pickupCount,
                 validity_days: validityDays,
-                price_paise: pricePaise,
               }
             : p
         )
@@ -168,7 +155,6 @@ export default function SetupPrepaidPackagesPage() {
           name,
           pickup_count: pickupCount,
           validity_days: validityDays,
-          price_paise: pricePaise,
           created_by: user?.id || null,
         })
         .select()
@@ -209,14 +195,6 @@ export default function SetupPrepaidPackagesPage() {
       prev.map((p) => (p.id === plan.id ? { ...p, is_active: newActive } : p))
     );
     toast.success(newActive ? "Plan activated" : "Plan deactivated");
-  }
-
-  function formatPrice(paise: number) {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-    }).format(paise / 100);
   }
 
   if (loading) return <DashboardSkeleton />;
@@ -288,25 +266,6 @@ export default function SetupPrepaidPackagesPage() {
                       required
                     />
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="price_inr">Price (INR)</Label>
-                    <Input
-                      id="price_inr"
-                      type="number"
-                      min={1}
-                      step="0.01"
-                      placeholder="e.g. 5000"
-                      value={form.price_inr}
-                      onChange={(e) =>
-                        setForm({ ...form, price_inr: e.target.value })
-                      }
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Stored as paise in the database (e.g. 5000 INR = 500000
-                      paise)
-                    </p>
-                  </div>
                 </div>
                 <DialogFooter>
                   <Button
@@ -352,7 +311,6 @@ export default function SetupPrepaidPackagesPage() {
                   <TableHead>Plan Name</TableHead>
                   <TableHead>Pickups</TableHead>
                   <TableHead>Validity</TableHead>
-                  <TableHead>Price</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Actions</TableHead>
@@ -364,7 +322,6 @@ export default function SetupPrepaidPackagesPage() {
                     <TableCell className="font-medium">{plan.name}</TableCell>
                     <TableCell>{plan.pickup_count} pickups</TableCell>
                     <TableCell>{plan.validity_days} days</TableCell>
-                    <TableCell>{formatPrice(plan.price_paise)}</TableCell>
                     <TableCell>
                       <Badge
                         variant="secondary"

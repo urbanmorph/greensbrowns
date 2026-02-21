@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,27 +14,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
 import { StatCard } from "@/components/shared/stat-card";
 import { PREPAID_STATUS_LABELS, PREPAID_STATUS_COLORS } from "@/lib/constants";
-import { CreditCard, Clock } from "lucide-react";
+import { CreditCard, Clock, Package, CalendarDays, Truck } from "lucide-react";
 import { toast } from "sonner";
+import type { PrepaidPackage, PrepaidPackagePlan } from "@/types";
 
-interface PrepaidPackage {
+interface AssignedPackageWithPlan {
   id: string;
-  organization_id: string;
-  requested_by: string;
-  pickup_count: number;
-  used_count: number;
-  status: string;
-  notes: string | null;
-  expires_at: string | null;
-  created_at: string;
+  plan_id: string;
+  price_paise: number;
+  is_active: boolean;
+  prepaid_package_plans: PrepaidPackagePlan;
+}
+
+function formatPrice(paise: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(paise / 100);
 }
 
 export default function BwgPrepaidPage() {
@@ -42,10 +45,9 @@ export default function BwgPrepaidPage() {
   const supabase = createClient();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [packages, setPackages] = useState<PrepaidPackage[]>([]);
+  const [assignedPackages, setAssignedPackages] = useState<AssignedPackageWithPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [pickupCount, setPickupCount] = useState<number>(1);
-  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState<string | null>(null);
 
   async function fetchPackages(organizationId: string) {
     const { data } = await supabase
@@ -55,6 +57,16 @@ export default function BwgPrepaidPage() {
       .order("created_at", { ascending: false });
 
     if (data) setPackages(data as PrepaidPackage[]);
+  }
+
+  async function fetchAssignedPackages(organizationId: string) {
+    const { data } = await supabase
+      .from("assigned_packages")
+      .select("id, plan_id, price_paise, is_active, prepaid_package_plans(*)")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true);
+
+    if (data) setAssignedPackages(data as unknown as AssignedPackageWithPlan[]);
   }
 
   useEffect(() => {
@@ -72,35 +84,38 @@ export default function BwgPrepaidPage() {
       }
 
       setOrgId(membership.organization_id);
-      await fetchPackages(membership.organization_id);
+      await Promise.all([
+        fetchPackages(membership.organization_id),
+        fetchAssignedPackages(membership.organization_id),
+      ]);
       setLoading(false);
     }
     fetchData();
   }, [user, supabase]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSelectPlan(assignedPkg: AssignedPackageWithPlan) {
     if (!orgId || !user) return;
 
-    setSubmitting(true);
+    setSubmitting(assignedPkg.id);
+    const plan = assignedPkg.prepaid_package_plans;
+
     const { error } = await supabase.from("prepaid_packages").insert({
       organization_id: orgId,
       requested_by: user.id,
-      pickup_count: pickupCount,
-      notes: notes || null,
+      pickup_count: plan.pickup_count,
+      plan_id: assignedPkg.plan_id,
+      notes: `Selected plan: ${plan.name} (${formatPrice(assignedPkg.price_paise)})`,
     });
 
     if (error) {
       toast.error("Failed to submit request. Please try again.");
-      setSubmitting(false);
+      setSubmitting(null);
       return;
     }
 
     toast.success("Prepaid request submitted! Awaiting admin approval.");
-    setPickupCount(1);
-    setNotes("");
     await fetchPackages(orgId);
-    setSubmitting(false);
+    setSubmitting(null);
   }
 
   const availableCredits = packages
@@ -134,7 +149,7 @@ export default function BwgPrepaidPage() {
     <div className="space-y-6">
       <PageHeader
         title="Prepaid Packages"
-        description="Purchase and manage prepaid pickup credits"
+        description="Select a plan assigned by admin and manage your pickup credits"
       />
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -150,47 +165,67 @@ export default function BwgPrepaidPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Request Prepaid Package</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!canRequestNew ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              {hasActivePackage
-                ? "You have an active prepaid package with remaining credits. You can request a new package once your credits are used up or the validity period ends."
-                : "You have a pending prepaid request awaiting admin approval. Please wait for it to be processed before submitting another."}
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pickupCount">Number of Pickups</Label>
-                <Input
-                  id="pickupCount"
-                  type="number"
-                  min={1}
-                  value={pickupCount}
-                  onChange={(e) => setPickupCount(Number(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes (optional)</Label>
-                <Textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Reference number, payment details..."
-                />
-              </div>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Submitting..." : "Submit Request"}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+      {/* Guard banner */}
+      {!canRequestNew && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {hasActivePackage
+            ? "You have an active prepaid package with remaining credits. You can request a new package once your credits are used up or the validity period ends."
+            : "You have a pending prepaid request awaiting admin approval. Please wait for it to be processed before submitting another."}
+        </div>
+      )}
 
+      {/* Available Plans Section */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Available Plans</h2>
+        {assignedPackages.length === 0 ? (
+          <Card>
+            <CardContent className="p-6">
+              <EmptyState
+                icon={Package}
+                title="No plans assigned"
+                description="Your admin has not assigned any prepaid plans to your organization yet. Please contact your admin."
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {assignedPackages.map((ap) => {
+              const plan = ap.prepaid_package_plans;
+              return (
+                <Card key={ap.id} className="flex flex-col">
+                  <CardHeader>
+                    <CardTitle className="text-base">{plan.name}</CardTitle>
+                    <CardDescription>
+                      {formatPrice(ap.price_paise)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-1 space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Truck className="h-4 w-4" />
+                      <span>{plan.pickup_count} pickups</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CalendarDays className="h-4 w-4" />
+                      <span>{plan.validity_days} days validity</span>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button
+                      className="w-full"
+                      disabled={!canRequestNew || submitting === ap.id}
+                      onClick={() => handleSelectPlan(ap)}
+                    >
+                      {submitting === ap.id ? "Submitting..." : "Select Plan"}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Package History Table */}
       <Card>
         <CardHeader>
           <CardTitle>Your Packages</CardTitle>
@@ -201,7 +236,7 @@ export default function BwgPrepaidPage() {
               <EmptyState
                 icon={CreditCard}
                 title="No prepaid packages"
-                description="Submit a request above to purchase prepaid pickup credits."
+                description="Select a plan above to request prepaid pickup credits."
               />
             </div>
           ) : (
@@ -227,7 +262,7 @@ export default function BwgPrepaidPage() {
                     <TableCell>
                       {pkg.status === "approved"
                         ? pkg.pickup_count - pkg.used_count
-                        : "—"}
+                        : "\u2014"}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -240,7 +275,7 @@ export default function BwgPrepaidPage() {
                     <TableCell>
                       {pkg.expires_at
                         ? new Date(pkg.expires_at).toLocaleDateString()
-                        : "—"}
+                        : "\u2014"}
                     </TableCell>
                   </TableRow>
                 ))}
