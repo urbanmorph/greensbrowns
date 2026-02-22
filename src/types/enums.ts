@@ -35,4 +35,4 @@ export type VehicleDocType = "rc" | "insurance" | "tax_receipt" | "emission_cert
 
 export type TripStatus = "in_transit" | "delivered";
 
-export type JobStatus = "pending" | "dispatched" | "in_progress" | "completed" | "cancelled";
+export type JobStatus = "draft" | "pending" | "dispatched" | "in_progress" | "completed" | "cancelled";

@@ -179,6 +179,7 @@ export const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
 };
 
 export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
+  draft: "Draft",
   pending: "Pending",
   dispatched: "Dispatched",
   in_progress: "In Progress",
@@ -187,6 +188,7 @@ export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
 };
 
 export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
+  draft: "bg-gray-100 text-gray-800",
   pending: "bg-blue-100 text-blue-800",
   dispatched: "bg-yellow-100 text-yellow-800",
   in_progress: "bg-purple-100 text-purple-800",
