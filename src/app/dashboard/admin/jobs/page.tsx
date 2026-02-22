@@ -52,6 +52,7 @@ import {
   Trash2,
   Loader2,
   X,
+  IndianRupee,
 } from "lucide-react";
 import Link from "next/link";
 import type { JobStatus, VehicleType } from "@/types";
@@ -76,11 +77,20 @@ interface JobRow {
   scheduled_date: string;
   status: JobStatus;
   notes: string | null;
+  total_cost_rs: number | null;
+  estimated_trips: number | null;
+  estimated_distance_km: number | null;
   created_at: string;
   vehicles: { registration_number: string; vehicle_type: VehicleType } | null;
   drivers: { name: string } | null;
   profiles: { full_name: string | null } | null;
   job_pickups: { count: number }[] | null;
+}
+
+interface RateRow {
+  vehicle_type: VehicleType;
+  base_fare_rs: number;
+  per_km_rs: number;
 }
 
 interface DriverInfo {
@@ -151,6 +161,9 @@ async function createJobFromSuggestion(
     pickupIds: string[];
     notes?: string | null;
     status?: "draft" | "pending";
+    totalCostRs?: number | null;
+    estimatedTrips?: number | null;
+    estimatedDistanceKm?: number | null;
   },
 ): Promise<{ jobNumber: string } | { error: string }> {
   const {
@@ -158,7 +171,7 @@ async function createJobFromSuggestion(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
-  const { scheduledDate, vehicleId, driverId, farmerId, pickupIds, notes, status = "pending" } = params;
+  const { scheduledDate, vehicleId, driverId, farmerId, pickupIds, notes, status = "pending", totalCostRs, estimatedTrips, estimatedDistanceKm } = params;
 
   // Generate job number: JOB-YYYYMMDD-XXXX
   const dateStr = scheduledDate.replace(/-/g, "");
@@ -180,6 +193,9 @@ async function createJobFromSuggestion(
       scheduled_date: scheduledDate,
       status,
       notes: notes || null,
+      total_cost_rs: totalCostRs ?? null,
+      estimated_trips: estimatedTrips ?? null,
+      estimated_distance_km: estimatedDistanceKm ?? null,
       created_by: user.id,
     })
     .select("id")
@@ -232,7 +248,7 @@ export default function AdminJobsPage() {
     const { data } = await supabase
       .from("jobs")
       .select(
-        "id, job_number, vehicle_id, farmer_id, driver_id, scheduled_date, status, notes, created_at, vehicles(registration_number, vehicle_type), drivers(name), profiles!jobs_farmer_id_fkey(full_name), job_pickups(count)"
+        "id, job_number, vehicle_id, farmer_id, driver_id, scheduled_date, status, notes, total_cost_rs, estimated_trips, estimated_distance_km, created_at, vehicles(registration_number, vehicle_type), drivers(name), profiles!jobs_farmer_id_fkey(full_name), job_pickups(count)"
       )
       .order("created_at", { ascending: false });
 
@@ -399,8 +415,11 @@ export default function AdminJobsPage() {
         driverId: driver?.id ?? null,
         farmerId: suggestion.farmerId,
         pickupIds: suggestion.pickupIds,
-        notes: `Auto-optimized: ${suggestion.pickups.length} pickups, est. ${suggestion.estimatedTrips} trip(s), ~${suggestion.estimatedDistanceKm} km`,
+        notes: `Auto-optimized: ${suggestion.pickups.length} pickups`,
         status: "draft",
+        totalCostRs: suggestion.estimatedCostRs,
+        estimatedTrips: suggestion.estimatedTrips,
+        estimatedDistanceKm: suggestion.estimatedDistanceKm,
       });
 
       if ("error" in jobResult) {
@@ -476,8 +495,9 @@ export default function AdminJobsPage() {
                   <TableHead>Farmer</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Pickups</TableHead>
+                  <TableHead>Cost</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>View</TableHead>
+                  <TableHead>Edit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -503,6 +523,15 @@ export default function AdminJobsPage() {
                     </TableCell>
                     <TableCell>
                       {job.job_pickups?.[0]?.count ?? 0}
+                    </TableCell>
+                    <TableCell>
+                      {job.total_cost_rs != null ? (
+                        <span className="text-sm">
+                          {Math.round(job.total_cost_rs).toLocaleString("en-IN")}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -581,6 +610,7 @@ function EditDraftJobDialog({
 
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [farmers, setFarmers] = useState<FarmerOption[]>([]);
+  const [rates, setRates] = useState<RateRow[]>([]);
   const [busyVehicleIds, setBusyVehicleIds] = useState<Set<string>>(new Set());
   const [jobPickups, setJobPickups] = useState<DraftJobPickup[]>([]);
 
@@ -588,17 +618,69 @@ function EditDraftJobDialog({
   const [selectedDriver, setSelectedDriver] = useState(job.driver_id ?? "");
   const [selectedFarmer, setSelectedFarmer] = useState(job.farmer_id);
   const [notes, setNotes] = useState(job.notes ?? "");
+  const [trips, setTrips] = useState<string>(
+    job.estimated_trips != null ? String(job.estimated_trips) : "",
+  );
+  const [distanceKm, setDistanceKm] = useState<string>(
+    job.estimated_distance_km != null ? String(job.estimated_distance_km) : "",
+  );
+  const [totalCost, setTotalCost] = useState<string>(
+    job.total_cost_rs != null ? String(job.total_cost_rs) : "",
+  );
+  const [costOverridden, setCostOverridden] = useState(false);
+  const [tripsOverridden, setTripsOverridden] = useState(false);
 
   const selectedVehicleObj = vehicles.find((v) => v.id === selectedVehicle);
   const vehicleDrivers = selectedVehicleObj?.vehicle_drivers ?? [];
+
+  // Auto-calculate trips when vehicle or pickups change (unless overridden)
+  useEffect(() => {
+    if (tripsOverridden || loading || !selectedVehicleObj) return;
+
+    const totalWeightKg = jobPickups.reduce(
+      (sum, jp) => sum + (jp.estimated_weight_kg ?? 0),
+      0,
+    );
+    const totalVolumeM3 = jobPickups.reduce(
+      (sum, jp) =>
+        sum + ((jp.estimated_weight_kg ?? 0) / GREEN_WASTE_DENSITY_KG_PER_M3),
+      0,
+    );
+
+    const capKg = selectedVehicleObj.capacity_kg;
+    const capM3 = selectedVehicleObj.volume_capacity_m3 ?? 0;
+    const tripsByWeight = capKg > 0 ? Math.ceil(totalWeightKg / capKg) : 1;
+    const tripsByVolume = capM3 > 0 ? Math.ceil(totalVolumeM3 / capM3) : 1;
+    const calcTrips = Math.max(tripsByWeight, tripsByVolume, 1);
+    setTrips(String(calcTrips));
+  }, [selectedVehicleObj, jobPickups, tripsOverridden, loading]);
+
+  // Auto-calculate cost from trips × (base_fare + per_km × distance)
+  useEffect(() => {
+    if (costOverridden || loading) return;
+    if (!selectedVehicleObj || rates.length === 0) return;
+
+    const rate = rates.find((r) => r.vehicle_type === selectedVehicleObj.vehicle_type);
+    if (!rate) {
+      setTotalCost("");
+      return;
+    }
+
+    const numTrips = parseInt(trips) || 1;
+    const numDist = parseFloat(distanceKm) || 0;
+    const cost = numTrips * (rate.base_fare_rs + rate.per_km_rs * numDist);
+    setTotalCost(String(Math.round(cost)));
+  }, [selectedVehicleObj, trips, distanceKm, rates, costOverridden, loading]);
 
   useEffect(() => {
     if (!open) return;
 
     async function load() {
       setLoading(true);
+      setCostOverridden(false);
+      setTripsOverridden(false);
 
-      const [{ data: vehicleData }, { data: farmerData }, { data: jpData }, { data: busyData }] =
+      const [{ data: vehicleData }, { data: farmerData }, { data: jpData }, { data: busyData }, { data: rateData }] =
         await Promise.all([
           supabase
             .from("vehicles")
@@ -623,6 +705,7 @@ function EditDraftJobDialog({
             .eq("scheduled_date", job.scheduled_date)
             .in("status", ["draft", "pending", "dispatched", "in_progress"])
             .neq("id", job.id),
+          supabase.from("vehicle_type_rates").select("vehicle_type, base_fare_rs, per_km_rs"),
         ]);
 
       const withDrivers = (vehicleData ?? []).filter(
@@ -634,6 +717,7 @@ function EditDraftJobDialog({
       setVehicles(withDrivers);
 
       if (farmerData) setFarmers(farmerData as unknown as FarmerOption[]);
+      if (rateData) setRates(rateData as unknown as RateRow[]);
 
       if (busyData) {
         setBusyVehicleIds(new Set(busyData.map((j) => j.vehicle_id)));
@@ -659,15 +743,32 @@ function EditDraftJobDialog({
         );
       }
 
+      // Initialize from saved values
+      if (job.estimated_trips != null) {
+        setTrips(String(job.estimated_trips));
+        setTripsOverridden(true);
+      }
+      if (job.estimated_distance_km != null) {
+        setDistanceKm(String(job.estimated_distance_km));
+      }
+      if (job.total_cost_rs != null) {
+        setTotalCost(String(job.total_cost_rs));
+        setCostOverridden(true);
+      }
+
       setLoading(false);
     }
     load();
-  }, [open, supabase, job.id, job.scheduled_date]);
+  }, [open, supabase, job.id, job.scheduled_date, job.total_cost_rs, job.estimated_trips, job.estimated_distance_km]);
 
   // Include current vehicle in available list
   const availableVehicles = vehicles.filter(
     (v) => !busyVehicleIds.has(v.id) || v.id === job.vehicle_id,
   );
+
+  const parsedCost = totalCost ? parseFloat(totalCost) : null;
+  const parsedTrips = trips ? parseInt(trips) : null;
+  const parsedDistanceKm = distanceKm ? parseFloat(distanceKm) : null;
 
   async function handleRemovePickup(jpId: string) {
     if (jobPickups.length <= 1) {
@@ -680,6 +781,8 @@ function EditDraftJobDialog({
       return;
     }
     setJobPickups((prev) => prev.filter((p) => p.id !== jpId));
+    setTripsOverridden(false);
+    setCostOverridden(false);
   }
 
   async function handleDeleteDraft() {
@@ -709,6 +812,9 @@ function EditDraftJobDialog({
         driver_id: selectedDriver || null,
         farmer_id: selectedFarmer,
         notes: notes || null,
+        total_cost_rs: parsedCost,
+        estimated_trips: parsedTrips,
+        estimated_distance_km: parsedDistanceKm,
       })
       .eq("id", job.id);
 
@@ -739,6 +845,9 @@ function EditDraftJobDialog({
         driver_id: selectedDriver || null,
         farmer_id: selectedFarmer,
         notes: notes || null,
+        total_cost_rs: parsedCost,
+        estimated_trips: parsedTrips,
+        estimated_distance_km: parsedDistanceKm,
       })
       .eq("id", job.id);
 
@@ -805,6 +914,8 @@ function EditDraftJobDialog({
                   setSelectedDriver(
                     drivers.length === 1 ? drivers[0].drivers.id : "",
                   );
+                  setTripsOverridden(false);
+                  setCostOverridden(false);
                 }}
               >
                 <SelectTrigger>
@@ -879,6 +990,69 @@ function EditDraftJobDialog({
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Trips & Distance */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Estimated Trips</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={trips}
+                  onChange={(e) => {
+                    setTrips(e.target.value);
+                    setTripsOverridden(true);
+                    setCostOverridden(false);
+                  }}
+                  placeholder="Auto-calculated"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Distance (km)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={distanceKm}
+                  onChange={(e) => {
+                    setDistanceKm(e.target.value);
+                    setCostOverridden(false);
+                  }}
+                  placeholder="Enter route distance"
+                />
+              </div>
+            </div>
+
+            {/* Total Cost */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <IndianRupee className="h-3.5 w-3.5" /> Total Cost (Rs)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={totalCost}
+                onChange={(e) => {
+                  setTotalCost(e.target.value);
+                  setCostOverridden(true);
+                }}
+                placeholder="Auto-calculated from rates"
+              />
+              {costOverridden && (
+                <p className="text-xs text-muted-foreground">
+                  Cost overridden manually.{" "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => setCostOverridden(false)}
+                  >
+                    Recalculate
+                  </button>
+                </p>
+              )}
             </div>
 
             {/* Notes */}
