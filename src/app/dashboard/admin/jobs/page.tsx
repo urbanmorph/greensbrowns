@@ -42,10 +42,33 @@ import {
   VEHICLE_TYPE_LABELS,
   GREEN_WASTE_DENSITY_KG_PER_M3,
 } from "@/lib/constants";
-import { ClipboardList, Plus, Eye, AlertTriangle } from "lucide-react";
+import {
+  ClipboardList,
+  Plus,
+  Eye,
+  AlertTriangle,
+  Sparkles,
+  Truck,
+  MapPin,
+  Weight,
+  Package,
+  Route,
+  IndianRupee,
+  Check,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import type { JobStatus, VehicleType } from "@/types";
 import { toast } from "sonner";
+import {
+  optimizeJobs,
+  type JobSuggestion,
+  type OptimizerPickup,
+  type OptimizerFarmer,
+  type OptimizerRate,
+  type OptimizerVehicle,
+} from "@/lib/job-optimizer";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // --- Local types ---
 
@@ -113,6 +136,78 @@ interface PendingPickup {
   existing_jobs: string[];
 }
 
+// --- Shared job creation helper ---
+
+async function createJobFromSuggestion(
+  supabase: SupabaseClient,
+  params: {
+    scheduledDate: string;
+    vehicleId: string;
+    driverId: string | null;
+    farmerId: string;
+    pickupIds: string[];
+    notes?: string | null;
+  },
+): Promise<{ jobNumber: string } | { error: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { scheduledDate, vehicleId, driverId, farmerId, pickupIds, notes } = params;
+
+  // Generate job number: JOB-YYYYMMDD-XXXX
+  const dateStr = scheduledDate.replace(/-/g, "");
+  const { count } = await supabase
+    .from("jobs")
+    .select("*", { count: "exact", head: true })
+    .eq("scheduled_date", scheduledDate);
+  const seq = String((count ?? 0) + 1).padStart(4, "0");
+  const jobNumber = `JOB-${dateStr}-${seq}`;
+
+  // Create job
+  const { data: job, error: jobErr } = await supabase
+    .from("jobs")
+    .insert({
+      job_number: jobNumber,
+      vehicle_id: vehicleId,
+      driver_id: driverId,
+      farmer_id: farmerId,
+      scheduled_date: scheduledDate,
+      notes: notes || null,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (jobErr || !job) return { error: "Failed to create job" };
+
+  // Create job_pickups
+  const { error: jpErr } = await supabase.from("job_pickups").insert(
+    pickupIds.map((pid) => ({ job_id: job.id, pickup_id: pid })),
+  );
+
+  if (jpErr) return { error: "Job created but failed to link pickups" };
+
+  // Update linked pickups: status -> assigned, vehicle_id, farmer_id
+  await supabase
+    .from("pickups")
+    .update({ status: "assigned", vehicle_id: vehicleId, farmer_id: farmerId })
+    .in("id", pickupIds);
+
+  // Insert pickup events
+  await supabase.from("pickup_events").insert(
+    pickupIds.map((pid) => ({
+      pickup_id: pid,
+      status: "assigned",
+      changed_by: user.id,
+      notes: `Assigned via ${jobNumber}`,
+    })),
+  );
+
+  return { jobNumber };
+}
+
 // --- Component ---
 
 export default function AdminJobsPage() {
@@ -120,6 +215,7 @@ export default function AdminJobsPage() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [optimizeOpen, setOptimizeOpen] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     const { data } = await supabase
@@ -151,9 +247,14 @@ export default function AdminJobsPage() {
         title="Jobs"
         description="Dispatch vehicles to pickup waste"
         action={
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Create Job
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setOptimizeOpen(true)}>
+              <Sparkles className="mr-2 h-4 w-4" /> Auto-Optimize
+            </Button>
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Create Job
+            </Button>
+          </div>
         }
       />
 
@@ -233,6 +334,12 @@ export default function AdminJobsPage() {
       <CreateJobDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        onCreated={fetchJobs}
+      />
+
+      <OptimizeSuggestionsDialog
+        open={optimizeOpen}
+        onOpenChange={setOptimizeOpen}
         onCreated={fetchJobs}
       />
     </div>
@@ -321,8 +428,6 @@ function CreateJobDialog({
     async function load() {
       setLoadingOptions(true);
 
-      // Vehicles: active, with at least one driver, not on an active job on this date
-      // We'll filter active jobs client-side for simplicity
       const [{ data: vehicleData }, { data: farmerData }] = await Promise.all([
         supabase
           .from("vehicles")
@@ -335,7 +440,6 @@ function CreateJobDialog({
           .eq("role", "farmer"),
       ]);
 
-      // Filter vehicles that have at least one driver
       const withDrivers = (vehicleData ?? []).filter(
         (v: Record<string, unknown>) => {
           const drivers = v.vehicle_drivers as unknown[];
@@ -374,7 +478,6 @@ function CreateJobDialog({
   async function loadPickups() {
     setLoadingPickups(true);
 
-    // Get farmer location for geo query
     const lat = farmerDetail?.farm_lat;
     const lng = farmerDetail?.farm_lng;
 
@@ -405,7 +508,6 @@ function CreateJobDialog({
       }
     }
 
-    // Also get ALL pending pickups (for "other" section — those without geo or outside radius)
     const { data: allPending, error: pendingErr } = await supabase
       .from("pickups")
       .select("id, pickup_number, organization_id, estimated_weight_kg, estimated_volume_m3, scheduled_date, organizations(name, address, org_type, lat, lng)")
@@ -439,7 +541,6 @@ function CreateJobDialog({
         };
       });
 
-    // Check if any pickups already belong to a job
     const allIds = [...nearby, ...other].map((p) => p.id);
     if (allIds.length > 0) {
       const { data: existingJps } = await supabase
@@ -484,84 +585,22 @@ function CreateJobDialog({
 
     setCreating(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Not authenticated");
+    const result = await createJobFromSuggestion(supabase, {
+      scheduledDate,
+      vehicleId: selectedVehicle,
+      driverId: selectedDriver,
+      farmerId: selectedFarmer,
+      pickupIds: Array.from(selectedPickupIds),
+      notes: notes || null,
+    });
+
+    if ("error" in result) {
+      toast.error(result.error);
       setCreating(false);
       return;
     }
 
-    // Generate job number: JOB-YYYYMMDD-XXXX
-    const dateStr = scheduledDate.replace(/-/g, "");
-    const { count } = await supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("scheduled_date", scheduledDate);
-    const seq = String((count ?? 0) + 1).padStart(4, "0");
-    const jobNumber = `JOB-${dateStr}-${seq}`;
-
-    // Create job
-    const { data: job, error: jobErr } = await supabase
-      .from("jobs")
-      .insert({
-        job_number: jobNumber,
-        vehicle_id: selectedVehicle,
-        driver_id: selectedDriver,
-        farmer_id: selectedFarmer,
-        scheduled_date: scheduledDate,
-        notes: notes || null,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-
-    if (jobErr || !job) {
-      toast.error("Failed to create job");
-      setCreating(false);
-      return;
-    }
-
-    // Create job_pickups
-    const pickupIds = Array.from(selectedPickupIds);
-    const { error: jpErr } = await supabase.from("job_pickups").insert(
-      pickupIds.map((pid) => ({ job_id: job.id, pickup_id: pid }))
-    );
-
-    if (jpErr) {
-      toast.error("Job created but failed to link pickups");
-      setCreating(false);
-      onOpenChange(false);
-      onCreated();
-      return;
-    }
-
-    // Update linked pickups: status → assigned, vehicle_id, farmer_id
-    const { error: updateErr } = await supabase
-      .from("pickups")
-      .update({
-        status: "assigned",
-        vehicle_id: selectedVehicle,
-        farmer_id: selectedFarmer,
-      })
-      .in("id", pickupIds);
-
-    if (updateErr) {
-      toast.error("Job created but failed to update pickup statuses");
-    }
-
-    // Insert pickup events
-    await supabase.from("pickup_events").insert(
-      pickupIds.map((pid) => ({
-        pickup_id: pid,
-        status: "assigned",
-        changed_by: user.id,
-        notes: `Assigned via ${jobNumber}`,
-      }))
-    );
-
-    toast.success(`${jobNumber} created with ${pickupIds.length} pickup(s)`);
+    toast.success(`${result.jobNumber} created with ${selectedPickupIds.size} pickup(s)`);
     setCreating(false);
     onOpenChange(false);
     onCreated();
@@ -613,7 +652,6 @@ function CreateJobDialog({
                       value={selectedVehicle}
                       onValueChange={(v) => {
                         setSelectedVehicle(v);
-                        // Auto-select driver if vehicle has exactly one
                         const veh = vehicles.find((x) => x.id === v);
                         const drivers = veh?.vehicle_drivers ?? [];
                         setSelectedDriver(
@@ -644,7 +682,6 @@ function CreateJobDialog({
                 )}
               </div>
 
-              {/* Driver selection — shown when a vehicle is selected */}
               {selectedVehicle && vehicleDrivers.length > 0 && (
                 <div className="space-y-2">
                   <Label>Driver</Label>
@@ -696,7 +733,7 @@ function CreateJobDialog({
                 </Select>
                 {selectedFarmerObj && farmerDetail?.farm_name && (
                   <p className="text-xs text-muted-foreground">
-                    🌿 {farmerDetail.farm_name}
+                    {farmerDetail.farm_name}
                     {farmerDetail.farm_address
                       ? `, ${farmerDetail.farm_address}`
                       : ""}
@@ -740,7 +777,6 @@ function CreateJobDialog({
                 </p>
               ) : (
                 <>
-                  {/* Nearby pickups */}
                   {nearbyPickups.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -758,7 +794,6 @@ function CreateJobDialog({
                     </div>
                   )}
 
-                  {/* Other pending pickups */}
                   {otherPickups.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -785,7 +820,6 @@ function CreateJobDialog({
                 </>
               )}
 
-              {/* Summary bar */}
               {selectedPickupIds.size > 0 && (
                 <div className="rounded-md border p-3 bg-muted/50 text-sm space-y-1">
                   <p>
@@ -834,6 +868,403 @@ function CreateJobDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// --- Auto-Optimize Suggestions Dialog ---
+
+function OptimizeSuggestionsDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+}) {
+  const supabase = createClient();
+
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [minDate, setMinDate] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<JobSuggestion[]>([]);
+  const [skippedPickups, setSkippedPickups] = useState<OptimizerPickup[]>([]);
+  const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+  const [acceptingIndex, setAcceptingIndex] = useState<number | null>(null);
+  const [hasRun, setHasRun] = useState(false);
+
+  // Available vehicles with drivers (for resolving physical vehicle + driver on accept)
+  const [vehiclesWithDrivers, setVehiclesWithDrivers] = useState<VehicleOption[]>([]);
+  const [busyVehicleIds, setBusyVehicleIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setMinDate(tomorrow.toISOString().split("T")[0]);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setScheduledDate(tomorrow.toISOString().split("T")[0]);
+    setSuggestions([]);
+    setSkippedPickups([]);
+    setDismissedIndices(new Set());
+    setHasRun(false);
+  }, [open]);
+
+  // Re-run optimization when date changes and dialog is open
+  useEffect(() => {
+    if (!open || !scheduledDate) return;
+    runOptimizer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledDate, open]);
+
+  async function runOptimizer() {
+    setLoading(true);
+    setDismissedIndices(new Set());
+
+    const [
+      { data: pickupData },
+      { data: farmerData },
+      { data: rateData },
+      { data: vehicleData },
+      { data: busyData },
+    ] = await Promise.all([
+      supabase
+        .from("pickups")
+        .select("id, pickup_number, estimated_weight_kg, estimated_volume_m3, organizations(name, lat, lng)")
+        .eq("status", "verified"),
+      supabase
+        .from("profiles")
+        .select("id, full_name, farmer_details(farm_lat, farm_lng, is_active)")
+        .eq("role", "farmer"),
+      supabase.from("vehicle_type_rates").select("vehicle_type, base_fare_rs, per_km_rs"),
+      supabase
+        .from("vehicles")
+        .select("id, vehicle_type, capacity_kg, volume_capacity_m3, vehicle_drivers(driver_id, drivers(id, name, phone, license_number))")
+        .eq("is_active", true),
+      supabase
+        .from("jobs")
+        .select("vehicle_id")
+        .eq("scheduled_date", scheduledDate)
+        .in("status", ["pending", "dispatched", "in_progress"]),
+    ]);
+
+    const busyIds = new Set((busyData ?? []).map((j) => j.vehicle_id));
+    setBusyVehicleIds(busyIds);
+
+    // Vehicles with at least one driver
+    const allVehiclesWithDrivers = (vehicleData ?? []).filter(
+      (v: Record<string, unknown>) => {
+        const drivers = v.vehicle_drivers as unknown[];
+        return drivers && drivers.length > 0;
+      },
+    ) as unknown as VehicleOption[];
+    setVehiclesWithDrivers(allVehiclesWithDrivers);
+
+    // Map data into optimizer input types
+    const optimizerPickups: OptimizerPickup[] = (pickupData ?? []).map(
+      (p: Record<string, unknown>) => {
+        const org = p.organizations as Record<string, unknown> | null;
+        return {
+          id: p.id as string,
+          pickup_number: p.pickup_number as string,
+          org_name: (org?.name as string) ?? "",
+          estimated_weight_kg: p.estimated_weight_kg as number | null,
+          estimated_volume_m3: p.estimated_volume_m3 as number | null,
+          lat: (org?.lat as number) ?? null,
+          lng: (org?.lng as number) ?? null,
+        };
+      },
+    );
+
+    const optimizerFarmers: OptimizerFarmer[] = (farmerData ?? [])
+      .filter((f: Record<string, unknown>) => {
+        const details = f.farmer_details as Record<string, unknown>[] | null;
+        return details?.[0]?.is_active !== false;
+      })
+      .map((f: Record<string, unknown>) => {
+        const details = f.farmer_details as Record<string, unknown>[] | null;
+        return {
+          id: f.id as string,
+          full_name: f.full_name as string | null,
+          farm_lat: (details?.[0]?.farm_lat as number) ?? null,
+          farm_lng: (details?.[0]?.farm_lng as number) ?? null,
+        };
+      });
+
+    const optimizerRates: OptimizerRate[] = (rateData ?? []).map(
+      (r: Record<string, unknown>) => ({
+        vehicle_type: r.vehicle_type as VehicleType,
+        base_fare_rs: r.base_fare_rs as number,
+        per_km_rs: r.per_km_rs as number,
+      }),
+    );
+
+    // Available (not busy) vehicles for the optimizer
+    const availableVehicles: OptimizerVehicle[] = allVehiclesWithDrivers
+      .filter((v) => !busyIds.has(v.id))
+      .map((v) => ({
+        id: v.id,
+        vehicle_type: v.vehicle_type,
+        capacity_kg: v.capacity_kg,
+        volume_capacity_m3: v.volume_capacity_m3,
+      }));
+
+    const result = optimizeJobs(
+      optimizerPickups,
+      optimizerFarmers,
+      optimizerRates,
+      availableVehicles,
+      GREEN_WASTE_DENSITY_KG_PER_M3,
+    );
+
+    setSuggestions(result.suggestions);
+    setSkippedPickups(result.skippedPickups);
+    setHasRun(true);
+    setLoading(false);
+  }
+
+  async function handleAccept(index: number) {
+    const suggestion = suggestions[index];
+    setAcceptingIndex(index);
+
+    // Find a physical vehicle of the winning type that is available
+    const availableOfType = vehiclesWithDrivers.filter(
+      (v) =>
+        v.vehicle_type === suggestion.vehicleType &&
+        !busyVehicleIds.has(v.id),
+    );
+
+    if (availableOfType.length === 0) {
+      toast.error(`No available ${VEHICLE_TYPE_LABELS[suggestion.vehicleType]} for this date`);
+      setAcceptingIndex(null);
+      return;
+    }
+
+    const vehicle = availableOfType[0];
+    const driver = vehicle.vehicle_drivers[0]?.drivers;
+
+    const result = await createJobFromSuggestion(supabase, {
+      scheduledDate,
+      vehicleId: vehicle.id,
+      driverId: driver?.id ?? null,
+      farmerId: suggestion.farmerId,
+      pickupIds: suggestion.pickupIds,
+      notes: `Auto-optimized: ${suggestion.pickups.length} pickups, est. ${suggestion.estimatedTrips} trip(s), ~${suggestion.estimatedDistanceKm} km`,
+    });
+
+    if ("error" in result) {
+      toast.error(result.error);
+      setAcceptingIndex(null);
+      return;
+    }
+
+    toast.success(`${result.jobNumber} created with ${suggestion.pickupIds.length} pickup(s)`);
+
+    // Mark this vehicle as busy now and dismiss the card
+    setBusyVehicleIds((prev) => new Set([...prev, vehicle.id]));
+    setDismissedIndices((prev) => new Set([...prev, index]));
+    setAcceptingIndex(null);
+    onCreated();
+  }
+
+  const visibleSuggestions = suggestions.filter((_, i) => !dismissedIndices.has(i));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> Auto-Optimize Jobs
+          </DialogTitle>
+          <DialogDescription>
+            Clusters verified pickups by proximity, assigns nearest farmer, and picks the cheapest vehicle type.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Scheduled Date</Label>
+            <Input
+              type="date"
+              value={scheduledDate}
+              min={minDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+            />
+          </div>
+
+          {loading && (
+            <p className="text-sm text-muted-foreground">
+              Running optimizer...
+            </p>
+          )}
+
+          {!loading && hasRun && (
+            <>
+              {/* Skipped pickups warning */}
+              {skippedPickups.length > 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-amber-800">
+                    <AlertTriangle className="h-4 w-4" />
+                    {skippedPickups.length} pickup{skippedPickups.length !== 1 ? "s" : ""} skipped (no organization coordinates)
+                  </div>
+                  <div className="mt-1 text-xs text-amber-700">
+                    {skippedPickups.map((p) => p.pickup_number).join(", ")}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {visibleSuggestions.length === 0 && suggestions.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No optimization suggestions. Make sure there are verified pickups with organization locations set.
+                </p>
+              )}
+
+              {visibleSuggestions.length === 0 && suggestions.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  All suggestions have been accepted or dismissed.
+                </p>
+              )}
+
+              {suggestions.map((suggestion, index) => {
+                if (dismissedIndices.has(index)) return null;
+
+                const availableOfType = vehiclesWithDrivers.filter(
+                  (v) =>
+                    v.vehicle_type === suggestion.vehicleType &&
+                    !busyVehicleIds.has(v.id),
+                );
+                const noVehicle = availableOfType.length === 0;
+
+                return (
+                  <SuggestionCard
+                    key={index}
+                    suggestion={suggestion}
+                    index={index}
+                    noVehicleAvailable={noVehicle}
+                    accepting={acceptingIndex === index}
+                    onAccept={() => handleAccept(index)}
+                    onDismiss={() =>
+                      setDismissedIndices((prev) => new Set([...prev, index]))
+                    }
+                  />
+                );
+              })}
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Suggestion Card ---
+
+function SuggestionCard({
+  suggestion,
+  index,
+  noVehicleAvailable,
+  accepting,
+  onAccept,
+  onDismiss,
+}: {
+  suggestion: JobSuggestion;
+  index: number;
+  noVehicleAvailable: boolean;
+  accepting: boolean;
+  onAccept: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">Cluster {index + 1}</p>
+        <Badge variant="secondary">
+          {VEHICLE_TYPE_LABELS[suggestion.vehicleType]}
+        </Badge>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Package className="h-3 w-3" />
+          {suggestion.pickups.length} pickup{suggestion.pickups.length !== 1 ? "s" : ""}
+        </div>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Weight className="h-3 w-3" />
+          {suggestion.totalWeightKg.toLocaleString()} kg
+        </div>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Package className="h-3 w-3" />
+          {suggestion.totalVolumeM3} m³
+        </div>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Truck className="h-3 w-3" />
+          {suggestion.estimatedTrips} trip{suggestion.estimatedTrips !== 1 ? "s" : ""}
+        </div>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Route className="h-3 w-3" />
+          {suggestion.estimatedDistanceKm} km
+        </div>
+        <div className="flex items-center gap-1 font-medium">
+          <IndianRupee className="h-3 w-3" />
+          {suggestion.estimatedCostRs.toLocaleString()}
+        </div>
+      </div>
+
+      {/* Pickup list */}
+      <div className="text-xs text-muted-foreground space-y-0.5">
+        {suggestion.pickups.map((p) => (
+          <div key={p.id} className="flex items-center gap-1">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="font-medium">{p.pickup_number}</span> — {p.org_name}
+          </div>
+        ))}
+      </div>
+
+      {/* Farmer */}
+      <p className="text-xs text-muted-foreground">
+        Farmer: <span className="font-medium">{suggestion.farmerName}</span>
+      </p>
+
+      {/* No vehicle warning */}
+      {noVehicleAvailable && (
+        <p className="text-xs text-amber-700 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          No available {VEHICLE_TYPE_LABELS[suggestion.vehicleType]} for this date
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-1">
+        <Button
+          size="sm"
+          onClick={onAccept}
+          disabled={noVehicleAvailable || accepting}
+        >
+          {accepting ? (
+            "Creating..."
+          ) : (
+            <>
+              <Check className="mr-1 h-3 w-3" /> Accept
+            </>
+          )}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDismiss} disabled={accepting}>
+          <X className="mr-1 h-3 w-3" /> Dismiss
+        </Button>
+      </div>
+    </div>
   );
 }
 
