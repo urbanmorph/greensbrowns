@@ -38,10 +38,12 @@ import {
   PREPAID_STATUS_LABELS,
   PREPAID_STATUS_COLORS,
 } from "@/lib/constants";
-import { Building2, Package, ChevronDown, ChevronRight, CreditCard, Check, X } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Building2, Package, ChevronDown, ChevronRight, CreditCard, Check, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { formatPaise } from "@/lib/utils";
 import type { PrepaidPackageStatus } from "@/types";
+import LocationPicker from "@/components/shared/location-picker-dynamic";
 
 const ORG_TYPE_LABELS: Record<string, string> = {
   apartment: "Apartment",
@@ -120,6 +122,20 @@ export default function AdminOrganizationsPage() {
     Record<string, AssignedPackageRow[]>
   >({});
   const [loadingPackages, setLoadingPackages] = useState<string | null>(null);
+
+  // Create org dialog state
+  const [createOrgOpen, setCreateOrgOpen] = useState(false);
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  const [newOrg, setNewOrg] = useState({
+    name: "",
+    org_type: "apartment",
+    address: "",
+    pincode: "",
+    contact_name: "",
+    contact_phone: "",
+    lat: null as number | null,
+    lng: null as number | null,
+  });
 
   // Purchased packages (prepaid) state
   const [packages, setPackages] = useState<PrepaidWithDetails[]>([]);
@@ -389,6 +405,52 @@ export default function AdminOrganizationsPage() {
     toast.success("Package rejected");
   }
 
+  async function handleCreateOrg() {
+    if (!newOrg.name.trim() || !newOrg.address.trim()) {
+      toast.error("Organization name and address are required");
+      return;
+    }
+    setCreatingOrg(true);
+
+    const { data, error } = await supabase
+      .from("organizations")
+      .insert({
+        name: newOrg.name.trim(),
+        org_type: newOrg.org_type,
+        address: newOrg.address.trim(),
+        city: "Bengaluru",
+        pincode: newOrg.pincode.trim() || null,
+        latitude: newOrg.lat,
+        longitude: newOrg.lng,
+      })
+      .select("id, name, org_type, address, city, pincode, created_at")
+      .single();
+
+    if (error) {
+      toast.error("Failed to create organization");
+      setCreatingOrg(false);
+      return;
+    }
+
+    setOrgs((prev) => [
+      { ...data, member_count: 0, pickup_count: 0 },
+      ...prev,
+    ]);
+    toast.success(`Organization "${data.name}" created`);
+    setCreateOrgOpen(false);
+    setCreatingOrg(false);
+    setNewOrg({
+      name: "",
+      org_type: "apartment",
+      address: "",
+      pincode: "",
+      contact_name: "",
+      contact_phone: "",
+      lat: null,
+      lng: null,
+    });
+  }
+
   if (loading) return <DashboardSkeleton />;
 
   return (
@@ -396,6 +458,12 @@ export default function AdminOrganizationsPage() {
       <PageHeader
         title="Organizations"
         description="All registered organizations on the platform"
+        action={
+          <Button onClick={() => setCreateOrgOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Organization
+          </Button>
+        }
       />
 
       <Tabs defaultValue="organizations">
@@ -679,6 +747,109 @@ export default function AdminOrganizationsPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Create Organization Dialog */}
+      <Dialog open={createOrgOpen} onOpenChange={setCreateOrgOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Organization</DialogTitle>
+            <DialogDescription>
+              Create an organization on behalf of a corporate or apartment association.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="orgName">Organization Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="orgName"
+                value={newOrg.name}
+                onChange={(e) => setNewOrg((p) => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. Prestige Lakeside Habitat"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="orgType">Organization Type</Label>
+              <Select
+                value={newOrg.org_type}
+                onValueChange={(v) => setNewOrg((p) => ({ ...p, org_type: v }))}
+              >
+                <SelectTrigger id="orgType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="apartment">Apartment</SelectItem>
+                  <SelectItem value="rwa">RWA</SelectItem>
+                  <SelectItem value="techpark">Tech Park</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="orgAddress">Address <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="orgAddress"
+                value={newOrg.address}
+                onChange={(e) => setNewOrg((p) => ({ ...p, address: e.target.value }))}
+                placeholder="Full address"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="orgPincode">Pincode</Label>
+              <Input
+                id="orgPincode"
+                value={newOrg.pincode}
+                onChange={(e) => setNewOrg((p) => ({ ...p, pincode: e.target.value }))}
+                placeholder="560001"
+                maxLength={6}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="contactName">Contact Name</Label>
+                <Input
+                  id="contactName"
+                  value={newOrg.contact_name}
+                  onChange={(e) => setNewOrg((p) => ({ ...p, contact_name: e.target.value }))}
+                  placeholder="Point of contact"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contactPhone">Contact Phone</Label>
+                <Input
+                  id="contactPhone"
+                  value={newOrg.contact_phone}
+                  onChange={(e) => setNewOrg((p) => ({ ...p, contact_phone: e.target.value }))}
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Map Location</Label>
+              <LocationPicker
+                lat={newOrg.lat}
+                lng={newOrg.lng}
+                onChange={(lat, lng) => setNewOrg((p) => ({ ...p, lat, lng }))}
+                height={250}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOrgOpen(false)} disabled={creatingOrg}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateOrg} disabled={creatingOrg}>
+              {creatingOrg ? "Creating..." : "Create Organization"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Assign Package Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
