@@ -903,25 +903,33 @@ function OptimizeSuggestionsDialog({
     setMinDate(tomorrow.toISOString().split("T")[0]);
   }, []);
 
+  // Track the date used for the last optimizer run to detect user changes
+  const [lastRunDate, setLastRunDate] = useState("");
+
   useEffect(() => {
     if (!open) return;
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setScheduledDate(tomorrow.toISOString().split("T")[0]);
+    const defaultDate = tomorrow.toISOString().split("T")[0];
     setSuggestions([]);
     setSkippedPickups([]);
     setDismissedIndices(new Set());
     setHasRun(false);
+    setScheduledDate(defaultDate);
+    setLastRunDate(defaultDate);
+    runOptimizerForDate(defaultDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Re-run optimization when date changes and dialog is open
+  // Re-run when the user changes the date
   useEffect(() => {
-    if (!open || !scheduledDate) return;
-    runOptimizer();
+    if (!open || !scheduledDate || scheduledDate === lastRunDate) return;
+    setLastRunDate(scheduledDate);
+    runOptimizerForDate(scheduledDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduledDate, open]);
+  }, [scheduledDate]);
 
-  async function runOptimizer() {
+  async function runOptimizerForDate(dateForOptimizer: string) {
     setLoading(true);
     setDismissedIndices(new Set());
 
@@ -948,7 +956,7 @@ function OptimizeSuggestionsDialog({
       supabase
         .from("jobs")
         .select("vehicle_id")
-        .eq("scheduled_date", scheduledDate)
+        .eq("scheduled_date", dateForOptimizer)
         .in("status", ["pending", "dispatched", "in_progress"]),
     ]);
 
