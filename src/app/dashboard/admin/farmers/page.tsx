@@ -37,6 +37,8 @@ import {
   ChevronDown,
   ChevronRight,
   MapPin,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createFarmer, updateFarmer } from "./actions";
@@ -54,6 +56,7 @@ interface FarmerRow {
     land_area_acres: number | null;
     capacity_kg_per_month: number | null;
     compost_types: string[];
+    is_active: boolean;
     notes: string | null;
   } | null;
   pickup_count: number;
@@ -211,6 +214,33 @@ export default function AdminFarmersPage() {
     fetchFarmers();
   }
 
+  async function toggleFarmerActive(farmer: FarmerRow) {
+    const newVal = !(farmer.farmer_details?.is_active ?? true);
+    const { error } = await supabase
+      .from("farmer_details")
+      .update({ is_active: newVal })
+      .eq("profile_id", farmer.id);
+
+    if (error) {
+      toast.error("Failed to update status");
+      return;
+    }
+
+    setFarmers((prev) =>
+      prev.map((f) =>
+        f.id === farmer.id
+          ? {
+              ...f,
+              farmer_details: f.farmer_details
+                ? { ...f.farmer_details, is_active: newVal }
+                : f.farmer_details,
+            }
+          : f
+      )
+    );
+    toast.success(newVal ? "Farmer activated" : "Farmer deactivated");
+  }
+
   if (loading) return <DashboardSkeleton />;
 
   return (
@@ -248,6 +278,7 @@ export default function AdminFarmersPage() {
                   <TableHead>Capacity (kg/mo)</TableHead>
                   <TableHead>Pickups</TableHead>
                   <TableHead>Joined</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -288,6 +319,18 @@ export default function AdminFarmersPage() {
                         {new Date(farmer.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            (farmer.farmer_details?.is_active ?? true)
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {(farmer.farmer_details?.is_active ?? true) ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <Button
                           size="sm"
                           variant="outline"
@@ -295,12 +338,24 @@ export default function AdminFarmersPage() {
                         >
                           <Pencil className="mr-1 h-3 w-3" /> Edit
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleFarmerActive(farmer)}
+                          title={(farmer.farmer_details?.is_active ?? true) ? "Deactivate" : "Activate"}
+                        >
+                          {(farmer.farmer_details?.is_active ?? true) ? (
+                            <ToggleRight className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <ToggleLeft className="h-4 w-4 text-gray-400" />
+                          )}
+                        </Button>
                       </TableCell>
                     </TableRow>
 
                     {expandedId === farmer.id && (
                       <TableRow>
-                        <TableCell colSpan={8} className="bg-muted/50 p-4">
+                        <TableCell colSpan={9} className="bg-muted/50 p-4">
                           <div className="grid gap-3 text-sm md:grid-cols-2">
                             <div>
                               <span className="text-muted-foreground">

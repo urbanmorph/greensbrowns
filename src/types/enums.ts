@@ -6,6 +6,7 @@ export type OrgType = "apartment" | "rwa" | "techpark";
 
 export type PickupStatus =
   | "requested"
+  | "verified"
   | "assigned"
   | "picked_up"
   | "in_transit"
@@ -33,3 +34,5 @@ export type PrepaidPackageStatus = "pending" | "approved" | "rejected" | "expire
 export type VehicleDocType = "rc" | "insurance" | "tax_receipt" | "emission_cert" | "fitness_cert";
 
 export type TripStatus = "in_transit" | "delivered";
+
+export type JobStatus = "pending" | "dispatched" | "in_progress" | "completed" | "cancelled";

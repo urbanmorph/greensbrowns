@@ -34,6 +34,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Plus,
   Truck,
@@ -45,6 +46,7 @@ import {
   Eye,
   Users,
   X,
+  IndianRupee,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -52,8 +54,8 @@ import {
   VEHICLE_TYPE_DETAILS,
   VEHICLE_DOC_LABELS,
 } from "@/lib/constants";
-import { extractRegistrationNumber } from "@/lib/ocr";
-import type { Vehicle, VehicleType, VehicleDocType, VehicleDocument, Driver } from "@/types";
+import { extractRegistrationNumber, extractLicenseDetails } from "@/lib/ocr";
+import type { Vehicle, VehicleType, VehicleDocType, VehicleDocument, Driver, VehicleTypeRate } from "@/types";
 
 interface VehicleWithDetails extends Vehicle {
   vehicle_documents?: VehicleDocument[];
@@ -76,6 +78,7 @@ export default function AdminCollectorVehiclesPage() {
   const [regNumber, setRegNumber] = useState("");
   const [vehicleType, setVehicleType] = useState<VehicleType>("auto");
   const [capacity, setCapacity] = useState("400");
+  const [volumeCapacity, setVolumeCapacity] = useState("2.5");
 
   // Document state
   const [docFiles, setDocFiles] = useState<Partial<Record<VehicleDocType, File>>>({});
@@ -91,7 +94,16 @@ export default function AdminCollectorVehiclesPage() {
   const [driverName, setDriverName] = useState("");
   const [driverLicense, setDriverLicense] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
+  const [driverValidTill, setDriverValidTill] = useState("");
+  const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
+  const [dlOcrRunning, setDlOcrRunning] = useState(false);
+  const [dlOcrProgress, setDlOcrProgress] = useState<number | null>(null);
   const [addingDriver, setAddingDriver] = useState(false);
+
+  // Rates state
+  const [rates, setRates] = useState<VehicleTypeRate[]>([]);
+  const [editedRates, setEditedRates] = useState<Record<string, { base_fare_rs: string; per_km_rs: string }>>({});
+  const [savingRates, setSavingRates] = useState(false);
 
   const fetchVehicles = useCallback(async () => {
     const { data, error } = await supabase
@@ -107,14 +119,29 @@ export default function AdminCollectorVehiclesPage() {
     setLoading(false);
   }, [supabase]);
 
+  const fetchRates = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("vehicle_type_rates")
+      .select("*")
+      .order("base_fare_rs", { ascending: true });
+
+    if (error) {
+      toast.error("Failed to load rates");
+      console.error(error);
+    }
+    if (data) setRates(data as unknown as VehicleTypeRate[]);
+  }, [supabase]);
+
   useEffect(() => {
     fetchVehicles();
+    fetchRates();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetForm() {
     setRegNumber("");
     setVehicleType("auto");
     setCapacity(String(VEHICLE_TYPE_DETAILS.auto.capacity));
+    setVolumeCapacity(String(VEHICLE_TYPE_DETAILS.auto.volume_m3));
     setDocFiles({});
     setDocExpiry({});
     setOcrProgress(null);
@@ -166,6 +193,7 @@ export default function AdminCollectorVehiclesPage() {
         registration_number: regNumber.trim().toUpperCase(),
         vehicle_type: vehicleType,
         capacity_kg: Number(capacity) || 500,
+        volume_capacity_m3: Number(volumeCapacity) || null,
       })
       .select()
       .single();
@@ -257,7 +285,46 @@ export default function AdminCollectorVehiclesPage() {
     setDriverName("");
     setDriverLicense("");
     setDriverPhone("");
+    setDriverValidTill("");
+    setDriverLicenseFile(null);
+    setDlOcrRunning(false);
+    setDlOcrProgress(null);
     setDriverDialogOpen(true);
+  }
+
+  async function handleDlUpload(file: File) {
+    setDriverLicenseFile(file);
+    setDlOcrRunning(true);
+    setDlOcrProgress(0);
+
+    try {
+      const { licenseNumber, name, validTill } = await extractLicenseDetails(file, setDlOcrProgress);
+      const extracted: string[] = [];
+
+      if (licenseNumber) {
+        setDriverLicense(licenseNumber);
+        extracted.push(`DL: ${licenseNumber}`);
+      }
+      if (name) {
+        setDriverName(name);
+        extracted.push(`Name: ${name}`);
+      }
+      if (validTill) {
+        setDriverValidTill(validTill);
+        extracted.push(`Valid till: ${validTill}`);
+      }
+
+      if (extracted.length > 0) {
+        toast.success(`Extracted: ${extracted.join(", ")}`);
+      } else {
+        toast.info("Could not extract details — please enter manually");
+      }
+    } catch {
+      toast.error("OCR failed — please enter details manually");
+    } finally {
+      setDlOcrRunning(false);
+      setDlOcrProgress(null);
+    }
   }
 
   async function handleAddDriver() {
@@ -265,7 +332,30 @@ export default function AdminCollectorVehiclesPage() {
       toast.error("Driver name and license number are required");
       return;
     }
+    if (!driverPhone.trim()) {
+      toast.error("WhatsApp phone number is required");
+      return;
+    }
     setAddingDriver(true);
+
+    // Upload DL photo if provided
+    let licensePhotoPath: string | null = null;
+    if (driverLicenseFile) {
+      const ext = driverLicenseFile.name.split(".").pop() || "jpg";
+      const dlKey = driverLicense.trim().toUpperCase().replace(/\s+/g, "");
+      const filePath = `driver-licenses/${dlKey}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("vehicle-docs")
+        .upload(filePath, driverLicenseFile, { upsert: true });
+
+      if (uploadError) {
+        console.error("Failed to upload DL photo:", uploadError);
+        toast.error("Failed to upload license photo, but will continue adding driver");
+      } else {
+        licensePhotoPath = filePath;
+      }
+    }
 
     // Upsert driver by license_number
     const { data: driver, error: driverError } = await supabase
@@ -274,7 +364,9 @@ export default function AdminCollectorVehiclesPage() {
         {
           name: driverName.trim(),
           license_number: driverLicense.trim().toUpperCase(),
-          phone: driverPhone.trim() || null,
+          phone: driverPhone.trim(),
+          license_photo_path: licensePhotoPath,
+          license_valid_till: driverValidTill || null,
         },
         { onConflict: "license_number" }
       )
@@ -313,6 +405,8 @@ export default function AdminCollectorVehiclesPage() {
     setDriverName("");
     setDriverLicense("");
     setDriverPhone("");
+    setDriverValidTill("");
+    setDriverLicenseFile(null);
     setAddingDriver(false);
     await fetchVehicles();
 
@@ -347,6 +441,44 @@ export default function AdminCollectorVehiclesPage() {
     }
   }, [vehicles]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleSaveRates() {
+    const entries = Object.entries(editedRates);
+    if (entries.length === 0) {
+      toast.info("No changes to save");
+      return;
+    }
+
+    setSavingRates(true);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let failed = 0;
+    for (const [id, vals] of entries) {
+      const { error } = await supabase
+        .from("vehicle_type_rates")
+        .update({
+          base_fare_rs: Number(vals.base_fare_rs),
+          per_km_rs: Number(vals.per_km_rs),
+          updated_by: user?.id ?? null,
+        })
+        .eq("id", id);
+
+      if (error) {
+        console.error(error);
+        failed++;
+      }
+    }
+
+    if (failed > 0) {
+      toast.error(`Failed to update ${failed} rate(s)`);
+    } else {
+      toast.success("Rates saved");
+    }
+
+    setEditedRates({});
+    setSavingRates(false);
+    fetchRates();
+  }
+
   if (loading) return <DashboardSkeleton />;
 
   return (
@@ -354,116 +486,206 @@ export default function AdminCollectorVehiclesPage() {
       <PageHeader
         title="Collector Vehicles"
         description="Register and manage vehicles assigned to collectors"
-        action={
-          <Button onClick={openAddDialog}>
-            <Plus className="mr-2 h-4 w-4" /> Add Vehicle
-          </Button>
-        }
       />
 
-      {vehicles.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <EmptyState
-              icon={Truck}
-              title="No vehicles registered"
-              description="Add the first vehicle to get started."
-              action={
-                <Button onClick={openAddDialog}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Vehicle
-                </Button>
-              }
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Registration</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Capacity (kg)</TableHead>
-                  <TableHead>Drivers</TableHead>
-                  <TableHead>Docs</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {vehicles.map((vehicle) => {
-                  const docCount = vehicle.vehicle_documents?.length ?? 0;
-                  const driverCount = vehicle.vehicle_drivers?.length ?? 0;
-                  return (
-                    <TableRow key={vehicle.id}>
-                      <TableCell className="font-medium font-mono">
-                        {vehicle.registration_number}
-                      </TableCell>
-                      <TableCell>
-                        {VEHICLE_TYPE_LABELS[vehicle.vehicle_type]}
-                      </TableCell>
-                      <TableCell>{vehicle.capacity_kg}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {driverCount}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {docCount}/{DOC_TYPES.length}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            vehicle.is_active
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
-                          }
-                        >
-                          {vehicle.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openDriverDialog(vehicle)}
-                          >
-                            <Users className="mr-1 h-3 w-3" /> Drivers
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => viewDocuments(vehicle)}
-                          >
-                            <Eye className="mr-1 h-3 w-3" /> Docs
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => toggleActive(vehicle)}
-                            title={vehicle.is_active ? "Deactivate" : "Activate"}
-                          >
-                            {vehicle.is_active ? (
-                              <ToggleRight className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <ToggleLeft className="h-4 w-4 text-gray-400" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
+      <Tabs defaultValue="vehicles">
+        <TabsList>
+          <TabsTrigger value="vehicles">
+            <Truck className="mr-2 h-4 w-4" /> Vehicles
+          </TabsTrigger>
+          <TabsTrigger value="rates">
+            <IndianRupee className="mr-2 h-4 w-4" /> Rates
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="vehicles" className="mt-4">
+          <div className="flex justify-end mb-4">
+            <Button onClick={openAddDialog}>
+              <Plus className="mr-2 h-4 w-4" /> Add Vehicle
+            </Button>
+          </div>
+
+          {vehicles.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <EmptyState
+                  icon={Truck}
+                  title="No vehicles registered"
+                  description="Add the first vehicle to get started."
+                  action={
+                    <Button onClick={openAddDialog}>
+                      <Plus className="mr-2 h-4 w-4" /> Add Vehicle
+                    </Button>
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Registration</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Capacity (kg)</TableHead>
+                      <TableHead>Drivers</TableHead>
+                      <TableHead>Docs</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                  </TableHeader>
+                  <TableBody>
+                    {vehicles.map((vehicle) => {
+                      const docCount = vehicle.vehicle_documents?.length ?? 0;
+                      const driverCount = vehicle.vehicle_drivers?.length ?? 0;
+                      return (
+                        <TableRow key={vehicle.id}>
+                          <TableCell className="font-medium font-mono">
+                            {vehicle.registration_number}
+                          </TableCell>
+                          <TableCell>
+                            {VEHICLE_TYPE_LABELS[vehicle.vehicle_type]}
+                          </TableCell>
+                          <TableCell>{vehicle.capacity_kg}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {driverCount}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {docCount}/{DOC_TYPES.length}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="secondary"
+                              className={
+                                vehicle.is_active
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }
+                            >
+                              {vehicle.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDriverDialog(vehicle)}
+                              >
+                                <Users className="mr-1 h-3 w-3" /> Drivers
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => viewDocuments(vehicle)}
+                              >
+                                <Eye className="mr-1 h-3 w-3" /> Docs
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleActive(vehicle)}
+                                title={vehicle.is_active ? "Deactivate" : "Activate"}
+                              >
+                                {vehicle.is_active ? (
+                                  <ToggleRight className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <ToggleLeft className="h-4 w-4 text-gray-400" />
+                                )}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="rates" className="mt-4">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vehicle Type</TableHead>
+                    <TableHead>Base Fare (Rs)</TableHead>
+                    <TableHead>Per Km (Rs)</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rates.map((rate) => {
+                    const edited = editedRates[rate.id];
+                    return (
+                      <TableRow key={rate.id}>
+                        <TableCell className="font-medium">
+                          {VEHICLE_TYPE_LABELS[rate.vehicle_type]}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className="w-24"
+                            value={edited?.base_fare_rs ?? String(rate.base_fare_rs)}
+                            onChange={(e) =>
+                              setEditedRates((prev) => ({
+                                ...prev,
+                                [rate.id]: {
+                                  base_fare_rs: e.target.value,
+                                  per_km_rs: prev[rate.id]?.per_km_rs ?? String(rate.per_km_rs),
+                                },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            className="w-24"
+                            value={edited?.per_km_rs ?? String(rate.per_km_rs)}
+                            onChange={(e) =>
+                              setEditedRates((prev) => ({
+                                ...prev,
+                                [rate.id]: {
+                                  base_fare_rs: prev[rate.id]?.base_fare_rs ?? String(rate.base_fare_rs),
+                                  per_km_rs: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(rate.updated_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+          <div className="flex justify-end mt-4">
+            <Button
+              onClick={handleSaveRates}
+              disabled={savingRates || Object.keys(editedRates).length === 0}
+            >
+              {savingRates ? "Saving..." : "Save Rates"}
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Add Vehicle Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -516,7 +738,7 @@ export default function AdminCollectorVehiclesPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Vehicle Type</Label>
                 <Select
@@ -525,6 +747,7 @@ export default function AdminCollectorVehiclesPage() {
                     const t = v as VehicleType;
                     setVehicleType(t);
                     setCapacity(String(VEHICLE_TYPE_DETAILS[t].capacity));
+                    setVolumeCapacity(String(VEHICLE_TYPE_DETAILS[t].volume_m3));
                   }}
                 >
                   <SelectTrigger>
@@ -551,6 +774,18 @@ export default function AdminCollectorVehiclesPage() {
                   onChange={(e) => setCapacity(e.target.value)}
                   min="50"
                   max="15000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="volumeCapacity">Volume (m³)</Label>
+                <Input
+                  id="volumeCapacity"
+                  type="number"
+                  value={volumeCapacity}
+                  onChange={(e) => setVolumeCapacity(e.target.value)}
+                  min="0.1"
+                  max="50"
+                  step="0.1"
                 />
               </div>
             </div>
@@ -695,6 +930,13 @@ export default function AdminCollectorVehiclesPage() {
                         License: {vd.drivers.license_number}
                         {vd.drivers.phone && ` · ${vd.drivers.phone}`}
                       </p>
+                      {vd.drivers.license_valid_till && (
+                        <p className={`text-xs ${new Date(vd.drivers.license_valid_till) <= new Date(new Date().toISOString().split("T")[0]) ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                          {new Date(vd.drivers.license_valid_till) <= new Date(new Date().toISOString().split("T")[0])
+                            ? "License expired"
+                            : "Valid till"}: {new Date(vd.drivers.license_valid_till).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      )}
                     </div>
                     <Button
                       size="sm"
@@ -711,6 +953,33 @@ export default function AdminCollectorVehiclesPage() {
             {/* Add driver inline form */}
             <div className="border-t pt-4 space-y-3">
               <p className="text-sm font-medium">Add Driver</p>
+
+              {/* DL Photo Upload */}
+              <div className="space-y-1">
+                <Label>Driving License Photo</Label>
+                <label className="block cursor-pointer">
+                  <div className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 px-3 py-2 text-sm text-muted-foreground hover:border-gray-400 transition-colors">
+                    <Upload className="h-3 w-3" />
+                    {driverLicenseFile ? driverLicenseFile.name : "Upload DL photo to auto-fill license number..."}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleDlUpload(file);
+                    }}
+                  />
+                </label>
+                {dlOcrRunning && dlOcrProgress !== null && (
+                  <div className="space-y-1">
+                    <Progress value={dlOcrProgress} className="h-2" />
+                    <p className="text-xs text-muted-foreground">Reading license number... {dlOcrProgress}%</p>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="driverName">Name</Label>
@@ -731,17 +1000,47 @@ export default function AdminCollectorVehiclesPage() {
                   />
                 </div>
               </div>
-              <div className="flex items-end gap-3">
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="driverPhone">Phone (optional)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="driverPhone">WhatsApp Phone Number *</Label>
                   <Input
                     id="driverPhone"
+                    type="tel"
                     value={driverPhone}
                     onChange={(e) => setDriverPhone(e.target.value)}
                     placeholder="+91..."
+                    required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Used for dispatch notifications via WhatsApp
+                  </p>
                 </div>
-                <Button onClick={handleAddDriver} disabled={addingDriver}>
+                <div className="space-y-1">
+                  <Label htmlFor="driverValidTill">License Valid Till *</Label>
+                  <Input
+                    id="driverValidTill"
+                    type="date"
+                    value={driverValidTill}
+                    onChange={(e) => setDriverValidTill(e.target.value)}
+                    required
+                  />
+                  {driverValidTill && new Date(driverValidTill) <= new Date(new Date().toISOString().split("T")[0]) && (
+                    <p className="text-xs text-red-600 font-medium">
+                      This license has expired. Cannot add driver with an expired license.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleAddDriver}
+                  disabled={
+                    addingDriver ||
+                    dlOcrRunning ||
+                    !driverValidTill ||
+                    new Date(driverValidTill) <= new Date(new Date().toISOString().split("T")[0])
+                  }
+                >
                   {addingDriver ? "Adding..." : "Add"}
                 </Button>
               </div>

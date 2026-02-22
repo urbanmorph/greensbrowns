@@ -249,7 +249,7 @@ export default function AdminDashboard() {
                 title="Unassigned Pickups"
                 count={alerts.unassignedPickups}
                 icon={AlertTriangle}
-                href="/dashboard/admin/pickups"
+                href="/dashboard/admin/jobs"
                 severity="critical"
               />
             )}

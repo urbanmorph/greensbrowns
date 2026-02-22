@@ -11,9 +11,10 @@ import {
   CreditCard,
   PackagePlus,
   IndianRupee,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
-import type { UserRole, KycStatus, PickupStatus, PrepaidPackageStatus, VehicleType, VehicleDocType, TripStatus } from "@/types/enums";
+import type { UserRole, KycStatus, PickupStatus, PrepaidPackageStatus, VehicleType, VehicleDocType, TripStatus, JobStatus } from "@/types/enums";
 
 export const APP_NAME = "GreensBrowns";
 export const APP_DESCRIPTION =
@@ -74,6 +75,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { title: "Dashboard", href: "/dashboard/admin", icon: Home },
       { title: "Users", href: "/dashboard/admin/users", icon: Users },
       { title: "Pickups", href: "/dashboard/admin/pickups", icon: Truck },
+      { title: "Jobs", href: "/dashboard/admin/jobs", icon: ClipboardList },
       { title: "Organizations", href: "/dashboard/admin/organizations", icon: Building2 },
       { title: "Farmers", href: "/dashboard/admin/farmers", icon: Sprout },
       { title: "Reports", href: "/dashboard/admin/reports", icon: BarChart3 },
@@ -98,6 +100,7 @@ export const KYC_STATUS_COLORS: Record<KycStatus, string> = {
 
 export const PICKUP_STATUS_LABELS: Record<PickupStatus, string> = {
   requested: "Requested",
+  verified: "Verified",
   assigned: "Assigned",
   picked_up: "Picked Up",
   in_transit: "In Transit",
@@ -108,6 +111,7 @@ export const PICKUP_STATUS_LABELS: Record<PickupStatus, string> = {
 
 export const PICKUP_STATUS_COLORS: Record<PickupStatus, string> = {
   requested: "bg-blue-100 text-blue-800",
+  verified: "bg-teal-100 text-teal-800",
   assigned: "bg-yellow-100 text-yellow-800",
   picked_up: "bg-orange-100 text-orange-800",
   in_transit: "bg-purple-100 text-purple-800",
@@ -142,17 +146,19 @@ export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   truck: "Heavy Truck",
 };
 
-export const VEHICLE_TYPE_DETAILS: Record<VehicleType, { examples: string; capacity: number }> = {
-  trolley: { examples: "BBMP handcart, fabricated steel push trolley", capacity: 300 },
-  auto: { examples: "Piaggio Ape, Mahindra Treo Zor", capacity: 400 },
-  mini_truck: { examples: "Tata Ace Gold, Mahindra Supro, Ashok Leyland Dost", capacity: 1000 },
-  pickup: { examples: "Mahindra Bolero Pikup, Tata Yodha", capacity: 1500 },
-  tempo: { examples: "Force Traveller, Tata Intra", capacity: 1500 },
-  tipper: { examples: "Tata Ace Tipper, Mahindra Supro Tipper, Tata 407 Tipper", capacity: 2000 },
-  light_truck: { examples: "Tata 407, Eicher Pro 2049", capacity: 3000 },
-  medium_truck: { examples: "Tata 709, Ashok Leyland Ecomet", capacity: 6000 },
-  truck: { examples: "Tata 1109, Ashok Leyland 1618", capacity: 10000 },
+export const VEHICLE_TYPE_DETAILS: Record<VehicleType, { examples: string; capacity: number; volume_m3: number }> = {
+  trolley: { examples: "BBMP handcart, fabricated steel push trolley", capacity: 300, volume_m3: 1.2 },
+  auto: { examples: "Piaggio Ape, Mahindra Treo Zor", capacity: 400, volume_m3: 2.5 },
+  mini_truck: { examples: "Tata Ace Gold, Mahindra Supro, Ashok Leyland Dost", capacity: 1000, volume_m3: 6 },
+  pickup: { examples: "Mahindra Bolero Pikup, Tata Yodha", capacity: 1500, volume_m3: 4.5 },
+  tempo: { examples: "Force Traveller, Tata Intra", capacity: 1500, volume_m3: 7 },
+  tipper: { examples: "Tata Ace Tipper, Mahindra Supro Tipper, Tata 407 Tipper", capacity: 2000, volume_m3: 4 },
+  light_truck: { examples: "Tata 407, Eicher Pro 2049", capacity: 3000, volume_m3: 15 },
+  medium_truck: { examples: "Tata 709, Ashok Leyland Ecomet", capacity: 6000, volume_m3: 22 },
+  truck: { examples: "Tata 1109, Ashok Leyland 1618", capacity: 10000, volume_m3: 35 },
 };
+
+export const GREEN_WASTE_DENSITY_KG_PER_M3 = 150;
 
 export const VEHICLE_DOC_LABELS: Record<VehicleDocType, string> = {
   rc: "Registration Certificate",
@@ -170,4 +176,20 @@ export const TRIP_STATUS_LABELS: Record<TripStatus, string> = {
 export const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
   in_transit: "bg-purple-100 text-purple-800",
   delivered: "bg-green-100 text-green-800",
+};
+
+export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
+  pending: "Pending",
+  dispatched: "Dispatched",
+  in_progress: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
+  pending: "bg-blue-100 text-blue-800",
+  dispatched: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-purple-100 text-purple-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
 };

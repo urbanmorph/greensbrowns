@@ -1,4 +1,4 @@
-export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus, VehicleDocType, TripStatus } from "./enums";
+export type { UserRole, KycStatus, OrgType, PickupStatus, RecurrenceType, PaymentStatus, ComplianceDocType, TicketStatus, VehicleType, PrepaidPackageStatus, VehicleDocType, TripStatus, JobStatus } from "./enums";
 
 export interface Profile {
   id: string;
@@ -43,6 +43,7 @@ export interface Pickup {
   scheduled_slot: string | null;
   recurrence: import("./enums").RecurrenceType;
   estimated_weight_kg: number | null;
+  estimated_volume_m3: number | null;
   actual_weight_kg: number | null;
   loading_helper_required: boolean;
   waste_photo_urls: string[];
@@ -97,6 +98,7 @@ export interface Vehicle {
   registration_number: string;
   vehicle_type: import("./enums").VehicleType;
   capacity_kg: number;
+  volume_capacity_m3: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -106,7 +108,9 @@ export interface Driver {
   id: string;
   name: string;
   license_number: string;
-  phone: string | null;
+  phone: string;
+  license_photo_path: string | null;
+  license_valid_till: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -151,6 +155,7 @@ export interface FarmerDetails {
   land_area_acres: number | null;
   capacity_kg_per_month: number | null;
   compost_types: string[];
+  is_active: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -172,4 +177,34 @@ export interface PickupTrip {
   delivered_at: string | null;
   notes: string | null;
   created_at: string;
+}
+
+export interface Job {
+  id: string;
+  job_number: string;
+  vehicle_id: string;
+  farmer_id: string;
+  driver_id: string | null;
+  scheduled_date: string;
+  status: import("./enums").JobStatus;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobPickup {
+  id: string;
+  job_id: string;
+  pickup_id: string;
+  created_at: string;
+}
+
+export interface VehicleTypeRate {
+  id: string;
+  vehicle_type: import("./enums").VehicleType;
+  base_fare_rs: number;
+  per_km_rs: number;
+  updated_at: string;
+  updated_by: string | null;
 }
