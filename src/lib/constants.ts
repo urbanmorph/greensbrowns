@@ -75,7 +75,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { title: "Users", href: "/dashboard/admin/users", icon: Users },
       { title: "Pickups", href: "/dashboard/admin/pickups", icon: Truck },
       { title: "Organizations", href: "/dashboard/admin/organizations", icon: Building2 },
-      { title: "Prepaid", href: "/dashboard/admin/prepaid", icon: CreditCard },
       { title: "Farmers", href: "/dashboard/admin/farmers", icon: Sprout },
       { title: "Reports", href: "/dashboard/admin/reports", icon: BarChart3 },
     ],

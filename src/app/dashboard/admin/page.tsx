@@ -267,7 +267,7 @@ export default function AdminDashboard() {
                 title="Prepaid Approvals"
                 count={alerts.prepaidPending}
                 icon={CreditCard}
-                href="/dashboard/admin/prepaid"
+                href="/dashboard/admin/organizations"
                 severity="warning"
               />
             )}

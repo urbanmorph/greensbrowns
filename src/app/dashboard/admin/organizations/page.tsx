@@ -30,12 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { Building2, Package, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  PREPAID_STATUS_LABELS,
+  PREPAID_STATUS_COLORS,
+} from "@/lib/constants";
+import { Building2, Package, ChevronDown, ChevronRight, CreditCard, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatPaise } from "@/lib/utils";
+import type { PrepaidPackageStatus } from "@/types";
 
 const ORG_TYPE_LABELS: Record<string, string> = {
   apartment: "Apartment",
@@ -71,8 +77,32 @@ interface AssignedPackageRow {
   prepaid_package_plans: { name: string; pickup_count: number } | null;
 }
 
+interface PrepaidPlan {
+  validity_days: number;
+}
+
+interface PrepaidWithDetails {
+  id: string;
+  organization_id: string;
+  pickup_count: number;
+  used_count: number;
+  status: PrepaidPackageStatus;
+  requested_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  expires_at: string | null;
+  notes: string | null;
+  created_at: string;
+  plan_id: string | null;
+  organizations: { name: string } | null;
+  profiles: { full_name: string | null; email: string | null } | null;
+  prepaid_package_plans: PrepaidPlan | null;
+}
+
 export default function AdminOrganizationsPage() {
   const supabase = createClient();
+
+  // Organizations state
   const [orgs, setOrgs] = useState<OrgWithCounts[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -91,6 +121,12 @@ export default function AdminOrganizationsPage() {
   >({});
   const [loadingPackages, setLoadingPackages] = useState<string | null>(null);
 
+  // Purchased packages (prepaid) state
+  const [packages, setPackages] = useState<PrepaidWithDetails[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Fetch organizations
   useEffect(() => {
     async function fetchOrgs() {
       const { data } = await supabase
@@ -105,7 +141,6 @@ export default function AdminOrganizationsPage() {
 
       const orgIds = data.map((o) => o.id);
 
-      // Batch count: members per org
       const { data: memberCounts } = await supabase
         .from("organization_members")
         .select("organization_id")
@@ -116,7 +151,6 @@ export default function AdminOrganizationsPage() {
         memberMap.set(m.organization_id, (memberMap.get(m.organization_id) || 0) + 1);
       }
 
-      // Batch count: pickups per org
       const { data: pickupRows } = await supabase
         .from("pickups")
         .select("organization_id")
@@ -137,6 +171,26 @@ export default function AdminOrganizationsPage() {
       setLoading(false);
     }
     fetchOrgs();
+  }, [supabase]);
+
+  // Fetch purchased packages
+  useEffect(() => {
+    async function fetchPackages() {
+      const { data } = await supabase
+        .from("prepaid_packages")
+        .select(
+          "*, organizations(name), profiles!prepaid_packages_requested_by_fkey(full_name, email), prepaid_package_plans(validity_days)"
+        )
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        const pkgs = data as unknown as PrepaidWithDetails[];
+        setPackages(pkgs);
+        setPendingCount(pkgs.filter((p) => p.status === "pending").length);
+      }
+      setPackagesLoading(false);
+    }
+    fetchPackages();
   }, [supabase]);
 
   const fetchPlans = useCallback(async () => {
@@ -231,11 +285,9 @@ export default function AdminOrganizationsPage() {
     setAssignDialogOpen(false);
     setSubmitting(false);
 
-    // Refresh assigned packages if this org is expanded
     if (expandedOrgId === selectedOrg.id) {
       fetchAssignedPackages(selectedOrg.id);
     }
-    // Clear cached data so it refreshes on next expand
     setAssignedPackages((prev) => {
       const updated = { ...prev };
       delete updated[selectedOrg.id];
@@ -270,6 +322,73 @@ export default function AdminOrganizationsPage() {
     );
   }
 
+  // Prepaid approve/reject handlers
+  async function handleApprove(pkg: PrepaidWithDetails) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      toast.error("Unable to verify admin user");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const validityDays = pkg.prepaid_package_plans?.validity_days ?? 365;
+    const expiresAt = new Date(
+      Date.now() + validityDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    const { error } = await supabase
+      .from("prepaid_packages")
+      .update({
+        status: "approved",
+        approved_by: user.id,
+        approved_at: now,
+        expires_at: expiresAt,
+      })
+      .eq("id", pkg.id);
+
+    if (error) {
+      toast.error("Failed to approve package");
+      return;
+    }
+
+    setPackages((prev) =>
+      prev.map((p) =>
+        p.id === pkg.id
+          ? {
+              ...p,
+              status: "approved",
+              approved_by: user.id,
+              approved_at: now,
+              expires_at: expiresAt,
+            }
+          : p
+      )
+    );
+    setPendingCount((c) => c - 1);
+    toast.success(`Package approved — valid for ${validityDays} days`);
+  }
+
+  async function handleReject(pkg: PrepaidWithDetails) {
+    const { error } = await supabase
+      .from("prepaid_packages")
+      .update({ status: "rejected" })
+      .eq("id", pkg.id);
+
+    if (error) {
+      toast.error("Failed to reject package");
+      return;
+    }
+
+    setPackages((prev) =>
+      prev.map((p) => (p.id === pkg.id ? { ...p, status: "rejected" } : p))
+    );
+    setPendingCount((c) => c - 1);
+    toast.success("Package rejected");
+  }
+
   if (loading) return <DashboardSkeleton />;
 
   return (
@@ -279,171 +398,287 @@ export default function AdminOrganizationsPage() {
         description="All registered organizations on the platform"
       />
 
-      {orgs.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <EmptyState
-              icon={Building2}
-              title="No organizations"
-              description="No organizations have been created yet."
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead>Pickups</TableHead>
-                  <TableHead>Joined</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orgs.map((org) => (
-                  <Fragment key={org.id}>
-                    <TableRow>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={() => toggleExpanded(org.id)}
-                        >
-                          {expandedOrgId === org.id ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TableCell>
-                      <TableCell className="font-medium">{org.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {ORG_TYPE_LABELS[org.org_type] || org.org_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {org.address}
-                        {org.pincode ? ` - ${org.pincode}` : ""}
-                      </TableCell>
-                      <TableCell>{org.member_count}</TableCell>
-                      <TableCell>{org.pickup_count}</TableCell>
-                      <TableCell>
-                        {new Date(org.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openAssignDialog(org)}
-                        >
-                          <Package className="mr-1 h-3 w-3" />
-                          Assign Package
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+      <Tabs defaultValue="organizations">
+        <TabsList>
+          <TabsTrigger value="organizations">Organizations</TabsTrigger>
+          <TabsTrigger value="purchased-packages">
+            Purchased Packages
+            {pendingCount > 0 && (
+              <Badge variant="destructive" className="ml-2 h-5 min-w-5 px-1.5 text-xs">
+                {pendingCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-                    {expandedOrgId === org.id && (
-                      <TableRow key={`${org.id}-packages`}>
-                        <TableCell colSpan={8} className="bg-muted/50 p-4">
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-semibold">
-                              Assigned Packages
-                            </h4>
-                            {loadingPackages === org.id ? (
-                              <p className="text-sm text-muted-foreground">
-                                Loading...
-                              </p>
-                            ) : !assignedPackages[org.id] ||
-                              assignedPackages[org.id].length === 0 ? (
-                              <p className="text-sm text-muted-foreground">
-                                No packages assigned to this organization yet.
-                              </p>
-                            ) : (
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>Plan</TableHead>
-                                    <TableHead>Pickups</TableHead>
-                                    <TableHead>Price</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Assigned On</TableHead>
-                                    <TableHead>Action</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {assignedPackages[org.id].map((pkg) => (
-                                    <TableRow key={pkg.id}>
-                                      <TableCell className="font-medium">
-                                        {pkg.prepaid_package_plans?.name ||
-                                          "\u2014"}
-                                      </TableCell>
-                                      <TableCell>
-                                        {pkg.prepaid_package_plans
-                                          ?.pickup_count || "\u2014"}
-                                      </TableCell>
-                                      <TableCell>
-                                        {formatPaise(pkg.price_paise)}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Badge
-                                          variant="secondary"
-                                          className={
-                                            pkg.is_active
-                                              ? "bg-green-100 text-green-800"
-                                              : "bg-gray-100 text-gray-600"
-                                          }
-                                        >
-                                          {pkg.is_active
-                                            ? "Active"
-                                            : "Inactive"}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell>
-                                        {new Date(
-                                          pkg.created_at
-                                        ).toLocaleDateString()}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            handleToggleActive(
-                                              org.id,
-                                              pkg.id,
-                                              pkg.is_active
-                                            )
-                                          }
-                                        >
-                                          {pkg.is_active
-                                            ? "Deactivate"
-                                            : "Activate"}
-                                        </Button>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            )}
-                          </div>
+        {/* Tab 1: Organizations */}
+        <TabsContent value="organizations" className="mt-4">
+          {orgs.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <EmptyState
+                  icon={Building2}
+                  title="No organizations"
+                  description="No organizations have been created yet."
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8"></TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Members</TableHead>
+                      <TableHead>Pickups</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orgs.map((org) => (
+                      <Fragment key={org.id}>
+                        <TableRow>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => toggleExpanded(org.id)}
+                            >
+                              {expandedOrgId === org.id ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="font-medium">{org.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {ORG_TYPE_LABELS[org.org_type] || org.org_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {org.address}
+                            {org.pincode ? ` - ${org.pincode}` : ""}
+                          </TableCell>
+                          <TableCell>{org.member_count}</TableCell>
+                          <TableCell>{org.pickup_count}</TableCell>
+                          <TableCell>
+                            {new Date(org.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openAssignDialog(org)}
+                            >
+                              <Package className="mr-1 h-3 w-3" />
+                              Assign Package
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+
+                        {expandedOrgId === org.id && (
+                          <TableRow key={`${org.id}-packages`}>
+                            <TableCell colSpan={8} className="bg-muted/50 p-4">
+                              <div className="space-y-2">
+                                <h4 className="text-sm font-semibold">
+                                  Assigned Packages
+                                </h4>
+                                {loadingPackages === org.id ? (
+                                  <p className="text-sm text-muted-foreground">
+                                    Loading...
+                                  </p>
+                                ) : !assignedPackages[org.id] ||
+                                  assignedPackages[org.id].length === 0 ? (
+                                  <p className="text-sm text-muted-foreground">
+                                    No packages assigned to this organization yet.
+                                  </p>
+                                ) : (
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Plan</TableHead>
+                                        <TableHead>Pickups</TableHead>
+                                        <TableHead>Price</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Assigned On</TableHead>
+                                        <TableHead>Action</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {assignedPackages[org.id].map((pkg) => (
+                                        <TableRow key={pkg.id}>
+                                          <TableCell className="font-medium">
+                                            {pkg.prepaid_package_plans?.name ||
+                                              "\u2014"}
+                                          </TableCell>
+                                          <TableCell>
+                                            {pkg.prepaid_package_plans
+                                              ?.pickup_count || "\u2014"}
+                                          </TableCell>
+                                          <TableCell>
+                                            {formatPaise(pkg.price_paise)}
+                                          </TableCell>
+                                          <TableCell>
+                                            <Badge
+                                              variant="secondary"
+                                              className={
+                                                pkg.is_active
+                                                  ? "bg-green-100 text-green-800"
+                                                  : "bg-gray-100 text-gray-600"
+                                              }
+                                            >
+                                              {pkg.is_active
+                                                ? "Active"
+                                                : "Inactive"}
+                                            </Badge>
+                                          </TableCell>
+                                          <TableCell>
+                                            {new Date(
+                                              pkg.created_at
+                                            ).toLocaleDateString()}
+                                          </TableCell>
+                                          <TableCell>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() =>
+                                                handleToggleActive(
+                                                  org.id,
+                                                  pkg.id,
+                                                  pkg.is_active
+                                                )
+                                              }
+                                            >
+                                              {pkg.is_active
+                                                ? "Deactivate"
+                                                : "Activate"}
+                                            </Button>
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Tab 2: Purchased Packages */}
+        <TabsContent value="purchased-packages" className="mt-4">
+          {packagesLoading ? (
+            <DashboardSkeleton />
+          ) : packages.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <EmptyState
+                  icon={CreditCard}
+                  title="No prepaid packages"
+                  description="No prepaid package requests have been submitted yet."
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Organization</TableHead>
+                      <TableHead>Requested By</TableHead>
+                      <TableHead>Pickups</TableHead>
+                      <TableHead>Used</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Requested</TableHead>
+                      <TableHead>Valid Until</TableHead>
+                      <TableHead>Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {packages.map((pkg) => (
+                      <TableRow key={pkg.id}>
+                        <TableCell className="font-medium">
+                          {pkg.organizations?.name || "\u2014"}
+                        </TableCell>
+                        <TableCell>
+                          {pkg.profiles?.full_name || pkg.profiles?.email || "\u2014"}
+                        </TableCell>
+                        <TableCell>{pkg.pickup_count}</TableCell>
+                        <TableCell>{pkg.used_count}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={PREPAID_STATUS_COLORS[pkg.status]}
+                          >
+                            {PREPAID_STATUS_LABELS[pkg.status]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(pkg.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          {pkg.expires_at ? (
+                            <span
+                              className={
+                                new Date(pkg.expires_at) < new Date()
+                                  ? "text-red-600 font-medium"
+                                  : ""
+                              }
+                            >
+                              {new Date(pkg.expires_at).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{"\u2014"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {pkg.status === "pending" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                                onClick={() => handleApprove(pkg)}
+                              >
+                                <Check className="mr-1 h-3 w-3" /> Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleReject(pkg)}
+                              >
+                                <X className="mr-1 h-3 w-3" /> Reject
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                          )}
                         </TableCell>
                       </TableRow>
-                    )}
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Assign Package Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
