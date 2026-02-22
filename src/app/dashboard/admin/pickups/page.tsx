@@ -17,7 +17,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DashboardSkeleton } from "@/components/shared/loading-skeleton";
-import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS } from "@/lib/constants";
+import { PICKUP_STATUS_LABELS, PICKUP_STATUS_COLORS, GREEN_WASTE_DENSITY_KG_PER_M3 } from "@/lib/constants";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -354,7 +354,15 @@ export default function AdminPickupsPage() {
                 type="number"
                 min="0"
                 value={verifyWeight}
-                onChange={(e) => setVerifyWeight(e.target.value)}
+                onChange={(e) => {
+                  const w = e.target.value;
+                  setVerifyWeight(w);
+                  if (w) {
+                    setVerifyVolume(
+                      (Number(w) / GREEN_WASTE_DENSITY_KG_PER_M3).toFixed(2)
+                    );
+                  }
+                }}
                 placeholder="Enter weight in kg"
               />
             </div>
@@ -366,9 +374,20 @@ export default function AdminPickupsPage() {
                 min="0"
                 step="0.1"
                 value={verifyVolume}
-                onChange={(e) => setVerifyVolume(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setVerifyVolume(v);
+                  if (v) {
+                    setVerifyWeight(
+                      Math.round(Number(v) * GREEN_WASTE_DENSITY_KG_PER_M3).toString()
+                    );
+                  }
+                }}
                 placeholder="Enter volume in m³"
               />
+              <p className="text-xs text-muted-foreground">
+                Auto-calculated at {GREEN_WASTE_DENSITY_KG_PER_M3} kg/m³ — editable
+              </p>
             </div>
           </div>
           <DialogFooter>
