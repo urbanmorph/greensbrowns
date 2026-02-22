@@ -8,15 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
-import { RoleSelector } from "@/components/auth/role-selector";
-import type { UserRole } from "@/types/enums";
 import Link from "next/link";
 
 export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("bwg");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -39,7 +36,7 @@ export default function RegisterPage() {
       email,
       password,
       options: {
-        data: { full_name: fullName, role },
+        data: { full_name: fullName, role: "bwg" },
         emailRedirectTo: redirectTo,
       },
     });
@@ -65,7 +62,7 @@ export default function RegisterPage() {
       <CardHeader>
         <CardTitle>Create Account</CardTitle>
         <CardDescription>
-          Join GreensBrowns to manage your green waste
+          Register your organization to manage green waste pickups
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -101,10 +98,6 @@ export default function RegisterPage() {
               required
               minLength={8}
             />
-          </div>
-          <div className="space-y-2">
-            <Label>I am a</Label>
-            <RoleSelector value={role} onChange={setRole} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>

@@ -1007,6 +1007,7 @@ function EditDraftJobDialog({
                     setCostOverridden(false);
                   }}
                   placeholder="Auto-calculated"
+                  className="bg-white"
                 />
               </div>
               <div className="space-y-2">
@@ -1021,6 +1022,7 @@ function EditDraftJobDialog({
                     setCostOverridden(false);
                   }}
                   placeholder="Enter route distance"
+                  className="bg-white"
                 />
               </div>
             </div>
@@ -1040,6 +1042,7 @@ function EditDraftJobDialog({
                   setCostOverridden(true);
                 }}
                 placeholder="Auto-calculated from rates"
+                className="bg-white"
               />
               {costOverridden && (
                 <p className="text-xs text-muted-foreground">
